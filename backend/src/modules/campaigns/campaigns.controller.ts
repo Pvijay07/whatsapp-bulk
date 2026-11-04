@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
 import { CampaignsService } from './campaigns.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
@@ -6,6 +6,11 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 @UseGuards(JwtAuthGuard)
 export class CampaignsController {
   constructor(private readonly campaignsService: CampaignsService) {}
+
+  @Get()
+  async getCampaigns(@Request() req: any) {
+    return this.campaignsService.getCampaigns(req.user.organizationId);
+  }
 
   @Post()
   async createCampaign(
@@ -43,6 +48,35 @@ export class CampaignsController {
   @Get(':id/report')
   async getReport(@Request() req: any, @Param('id') id: string) {
     return this.campaignsService.getCampaignReport(req.user.organizationId, id);
+  }
+
+  @Get(':id/messages')
+  async getMessages(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Query('page') page = '1',
+    @Query('limit') limit = '50',
+  ) {
+    return this.campaignsService.getCampaignMessages(
+      req.user.organizationId,
+      id,
+      parseInt(page, 10),
+      parseInt(limit, 10),
+    );
+  }
+
+  @Post('quick-send')
+  async quickSend(
+    @Request() req: any,
+    @Body()
+    body: {
+      contactId: string;
+      senderAccountId: string;
+      templateId?: string;
+      customMessage?: string;
+    },
+  ) {
+    return this.campaignsService.quickSend(req.user.organizationId, body);
   }
 }
 

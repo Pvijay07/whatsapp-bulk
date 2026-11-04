@@ -187,5 +187,124 @@ export class CampaignsService {
       createdAt: campaign.createdAt,
     };
   }
+
+  async getCampaigns(organizationId: string) {
+    const campaigns = await this.prisma.campaign.findMany({
+      where: { organizationId },
+      include: {
+        template: true,
+        senderAccount: true,
+        contactGroup: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return campaigns.map((c) => ({
+      ...c,
+      reservedINR: (Number(c.reservedPaise) / 100).toFixed(2),
+      actualCostINR: (Number(c.actualPaiseCost) / 100).toFixed(2),
+    }));
+  }
+
+  async getCampaignMessages(
+    organizationId: string,
+    campaignId: string,
+    page = 1,
+    limit = 50,
+  ) {
+    const skip = (page - 1) * limit;
+    const [messages, total] = await Promise.all([
+      this.prisma.message.findMany({
+        where: { organizationId, campaignId },
+        include: { contact: true, senderAccount: true },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.message.count({ where: { organizationId, campaignId } }),
+    ]);
+
+    return {
+      items: messages.map((m) => ({
+        id: m.id,
+        contactName: m.contact.name || 'Unknown',
+        phoneNumber: m.contact.phoneNumber,
+        status: m.status,
+        providerMessageId: m.providerMessageId,
+        costINR: (Number(m.costPaise) / 100).toFixed(2),
+        errorCode: m.errorCode,
+        errorMessage: m.errorMessage,
+        sentAt: m.sentAt,
+        deliveredAt: m.deliveredAt,
+        readAt: m.readAt,
+        createdAt: m.createdAt,
+      })),
+      total,
+      page,
+      limit,
+    };
+  }
+
+  async quickSend(
+    organizationId: string,
+    data: {
+      contactId: string;
+      senderAccountId: string;
+      templateId?: string;
+      customMessage?: string;
+    },
+  ) {
+    const contact = await this.prisma.contact.findFirst({
+      where: { id: data.contactId, organizationId },
+    });
+    if (!contact) throw new NotFoundException('Contact not found');
+
+    const sender = await this.prisma.whatsAppAccount.findFirst({
+      where: { id: data.senderAccountId, organizationId },
+    });
+    if (!sender) throw new NotFoundException('Sender account not found');
+
+    // 1. Reserve 100 paise (₹1.00)
+    await this.walletService.reserveCampaignEscrow(
+      organizationId,
+      this.defaultPerMessageCostPaise,
+      `quick_${contact.id}`,
+    );
+
+    // 2. Create quick campaign
+    const campaign = await this.prisma.campaign.create({
+      data: {
+        organizationId,
+        name: `Direct: ${contact.name || contact.phoneNumber}`,
+        senderAccountId: sender.id,
+        templateId: data.templateId,
+        status: CampaignStatus.SENDING,
+        totalContacts: 1,
+        reservedPaise: this.defaultPerMessageCostPaise,
+      },
+    });
+
+    // 3. Create message record
+    const message = await this.prisma.message.create({
+      data: {
+        organizationId,
+        campaignId: campaign.id,
+        contactId: contact.id,
+        senderAccountId: sender.id,
+        status: MessageStatus.QUEUED,
+        costPaise: this.defaultPerMessageCostPaise,
+      },
+    });
+
+    // 4. Dispatch
+    await enqueueCampaignMessages(campaign.id, organizationId, [message.id]);
+
+    return {
+      success: true,
+      campaignId: campaign.id,
+      messageId: message.id,
+      phoneNumber: contact.phoneNumber,
+    };
+  }
 }
 

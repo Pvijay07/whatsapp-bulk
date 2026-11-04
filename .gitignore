@@ -37,3 +37,4 @@ Thumbs.db
 *.sqlite
 *.sqlite3
 prisma/migrations/dev.db
+

@@ -33,6 +33,9 @@ import { VirtualNumbersController } from './modules/virtual-numbers/virtual-numb
 import { WhatsAppAccountsService } from './modules/whatsapp-accounts/whatsapp-accounts.service';
 import { WhatsAppAccountsController } from './modules/whatsapp-accounts/whatsapp-accounts.controller';
 
+import { TemplatesService } from './modules/templates/templates.service';
+import { TemplatesController } from './modules/templates/templates.controller';
+
 import { WebhooksController } from './modules/webhooks/webhooks.controller';
 
 @Module({
@@ -49,6 +52,7 @@ import { WebhooksController } from './modules/webhooks/webhooks.controller';
     WalletController,
     ContactsController,
     CampaignsController,
+    TemplatesController,
     VirtualNumbersController,
     WhatsAppAccountsController,
     WebhooksController,
@@ -61,6 +65,7 @@ import { WebhooksController } from './modules/webhooks/webhooks.controller';
     ConsentService,
     ContactsService,
     CampaignsService,
+    TemplatesService,
     VirtualNumbersService,
     WhatsAppAccountsService,
     MetaCloudApiAdapter,
