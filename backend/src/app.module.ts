@@ -7,7 +7,7 @@ import { PassportModule } from '@nestjs/passport';
 import { PrismaService } from './database/prisma.service';
 
 // Adapters
-import { MetaCloudApiAdapter } from './providers/messaging/meta-cloud-api.adapter';
+import { VirtualGatewayAdapter } from './providers/messaging/virtual-gateway.adapter';
 import { MockMessagingAdapter } from './providers/messaging/mock-messaging.adapter';
 import { ExotelNumberAdapter } from './providers/numbers/exotel.adapter';
 import { MockNumberAdapter } from './providers/numbers/mock-number.adapter';
@@ -68,7 +68,7 @@ import { WebhooksController } from './modules/webhooks/webhooks.controller';
     TemplatesService,
     VirtualNumbersService,
     WhatsAppAccountsService,
-    MetaCloudApiAdapter,
+    VirtualGatewayAdapter,
     MockMessagingAdapter,
     ExotelNumberAdapter,
     MockNumberAdapter,

@@ -12,8 +12,8 @@ import {
   Repeat,
   Sliders,
   Clock,
-  Layers,
   Shuffle,
+  FileText,
 } from 'lucide-react';
 
 interface WhatsAppModalProps {
@@ -27,10 +27,10 @@ interface WhatsAppModalProps {
   walletAvailableINR: string;
   onSendCampaign: (data: {
     campaignName: string;
-    dispatchMode: 'OFFICIAL_CLOUD_API' | 'VIRTUAL_NUMBER_POOL';
+    dispatchType: 'MULTI_NUMBER_POOL' | 'DEDICATED_NUMBER';
     senderNumber: string;
     senderPoolCount?: number;
-    template: MessageTemplate;
+    customMessageText: string;
     recipients: Contact[];
     delayIntervalSec: number;
     spintaxEnabled: boolean;
@@ -44,37 +44,36 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
   selectedContact,
   allContacts,
   virtualNumbers,
-  whatsAppAccounts,
   templates,
   walletAvailableINR,
   onSendCampaign,
 }) => {
   if (!isOpen) return null;
 
-  // Saasyto Dual Dispatch Modes:
-  // 1. OFFICIAL_CLOUD_API: Meta Verified, official templates
-  // 2. VIRTUAL_NUMBER_POOL: Multi-number round-robin rotation, Spintax & anti-ban delay
-  const [dispatchMode, setDispatchMode] = useState<'OFFICIAL_CLOUD_API' | 'VIRTUAL_NUMBER_POOL'>(
-    'VIRTUAL_NUMBER_POOL',
+  const [dispatchType, setDispatchType] = useState<'MULTI_NUMBER_POOL' | 'DEDICATED_NUMBER'>(
+    'MULTI_NUMBER_POOL',
   );
 
   const [targetType, setTargetType] = useState<'SINGLE' | 'ALL'>(selectedContact ? 'SINGLE' : 'ALL');
   const [selectedNumberId, setSelectedNumberId] = useState(virtualNumbers[0]?.id || '');
-  const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0]?.id || '');
   const [campaignName, setCampaignName] = useState(
     selectedContact
       ? `Direct to ${selectedContact.name}`
-      : `Broadcaster ${new Date().toLocaleDateString('en-IN')}`,
+      : `Virtual Broadcaster ${new Date().toLocaleDateString('en-IN')}`,
   );
 
-  // Anti-Ban & Saasyto Safeguards
+  // Direct Message Composer (No Meta template approvals required!)
+  const [messageText, setMessageText] = useState(
+    templates[0]?.bodyText || '{Hello|Hi|Greetings} {{1}}! We have an exclusive festive offer for you today. Reply with YES to receive your coupon code!',
+  );
+
+  // Anti-Ban & Humanized Controls
   const [delayIntervalSec, setDelayIntervalSec] = useState(3);
   const [spintaxEnabled, setSpintaxEnabled] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [spintaxVariantSeed, setSpintaxVariantSeed] = useState(0);
 
   const selectedNumber = virtualNumbers.find((n) => n.id === selectedNumberId) || virtualNumbers[0];
-  const selectedTemplate = templates.find((t) => t.id === selectedTemplateId) || templates[0];
 
   // Eligible recipients
   const eligibleRecipients = targetType === 'SINGLE' && selectedContact
@@ -92,13 +91,13 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
     setTimeout(() => {
       onSendCampaign({
         campaignName,
-        dispatchMode,
+        dispatchType,
         senderNumber:
-          dispatchMode === 'VIRTUAL_NUMBER_POOL'
-            ? `Multi-Number Pool (${virtualNumbers.length} Numbers)`
+          dispatchType === 'MULTI_NUMBER_POOL'
+            ? `Virtual Pool (${virtualNumbers.length} Numbers)`
             : selectedNumber?.phoneNumber || '+918045678901',
-        senderPoolCount: dispatchMode === 'VIRTUAL_NUMBER_POOL' ? virtualNumbers.length : 1,
-        template: selectedTemplate,
+        senderPoolCount: dispatchType === 'MULTI_NUMBER_POOL' ? virtualNumbers.length : 1,
+        customMessageText: messageText,
         recipients: eligibleRecipients,
         delayIntervalSec,
         spintaxEnabled,
@@ -118,11 +117,10 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
   };
 
   const previewName = eligibleRecipients[0]?.name || 'Customer';
-  let renderedBody = selectedTemplate.bodyText.replace('{{1}}', previewName);
+  let renderedBody = messageText.replace('{{1}}', previewName);
   if (spintaxEnabled) {
     renderedBody = parseSpintax(renderedBody);
   } else {
-    // Strip spintax brackets if disabled
     renderedBody = renderedBody.replace(/\{([^{}]+)\}/g, (_, choices) => choices.split('|')[0]);
   }
 
@@ -130,7 +128,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
         {/* Modal Header */}
-        <div className="bg-[#075E54] text-white px-6 py-4 flex items-center justify-between">
+        <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between border-b border-slate-800">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 rounded-full bg-[#25D366] flex items-center justify-center text-white shadow-inner">
               <MessageSquare className="w-6 h-6" />
@@ -138,12 +136,12 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
             <div>
               <h2 className="text-xl font-bold flex items-center gap-2">
                 Virtual Bulk WhatsApp Campaign
-                <span className="text-xs bg-[#128C7E] px-2.5 py-0.5 rounded-full font-medium">
-                  Multi-Channel Engine
+                <span className="text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2.5 py-0.5 rounded-full font-semibold">
+                  Virtual Gateway
                 </span>
               </h2>
-              <p className="text-xs text-emerald-100">
-                Multi-Number Rotation • Spintax Anti-Ban • Random Delay Intervals
+              <p className="text-xs text-slate-400">
+                Direct Virtual Number Dispatch • Multi-Number Rotation • No Meta Approval Needed
               </p>
             </div>
           </div>
@@ -159,45 +157,45 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 p-6">
           {/* Left Column: Configuration Controls (7 cols) */}
           <div className="md:col-span-7 space-y-4">
-            {/* Dispatch Mode Selector (Saasyto style) */}
+            {/* Sender Mode: Pool or Dedicated */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                Dispatch Infrastructure Mode
+                Virtual Sender Configuration
               </label>
               <div className="grid grid-cols-2 gap-2.5">
                 <button
                   type="button"
-                  onClick={() => setDispatchMode('VIRTUAL_NUMBER_POOL')}
+                  onClick={() => setDispatchType('MULTI_NUMBER_POOL')}
                   className={`p-3 rounded-xl border text-left transition ${
-                    dispatchMode === 'VIRTUAL_NUMBER_POOL'
+                    dispatchType === 'MULTI_NUMBER_POOL'
                       ? 'border-[#128C7E] bg-emerald-50/70 ring-1 ring-[#128C7E]'
                       : 'border-slate-200 hover:border-slate-300'
                   }`}
                 >
                   <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
                     <Repeat className="w-4 h-4 text-[#128C7E]" />
-                    Virtual Number Pool
+                    Multi-Number Pool
                   </div>
                   <div className="text-[11px] text-slate-500 mt-1 leading-snug">
-                    Round-Robin distributes messages across all {virtualNumbers.length} numbers to protect health.
+                    Rotates messages evenly across all {virtualNumbers.length} virtual numbers.
                   </div>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => setDispatchMode('OFFICIAL_CLOUD_API')}
+                  onClick={() => setDispatchType('DEDICATED_NUMBER')}
                   className={`p-3 rounded-xl border text-left transition ${
-                    dispatchMode === 'OFFICIAL_CLOUD_API'
+                    dispatchType === 'DEDICATED_NUMBER'
                       ? 'border-[#128C7E] bg-emerald-50/70 ring-1 ring-[#128C7E]'
                       : 'border-slate-200 hover:border-slate-300'
                   }`}
                 >
                   <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
-                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                    Meta Official WABA
+                    <PhoneCall className="w-4 h-4 text-emerald-600" />
+                    Single Dedicated Number
                   </div>
                   <div className="text-[11px] text-slate-500 mt-1 leading-snug">
-                    Single dedicated verified number with official pre-approved templates.
+                    Send exclusively through one selected virtual number.
                   </div>
                 </button>
               </div>
@@ -206,7 +204,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
             {/* Campaign Name */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                Campaign Name
+                Campaign Title
               </label>
               <input
                 type="text"
@@ -255,11 +253,11 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
               </div>
             </div>
 
-            {/* Sender Selection */}
-            {dispatchMode === 'OFFICIAL_CLOUD_API' ? (
+            {/* Sender Selection if Dedicated Number */}
+            {dispatchType === 'DEDICATED_NUMBER' ? (
               <div>
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                  Dedicated Sender Number (+91)
+                  Choose Virtual Sender Number (+91)
                 </label>
                 <select
                   value={selectedNumberId}
@@ -274,32 +272,48 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
                 </select>
               </div>
             ) : (
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
-                <div className="flex items-center justify-between text-xs font-bold text-slate-800">
-                  <span className="flex items-center gap-1.5">
-                    <Repeat className="w-3.5 h-3.5 text-emerald-600" />
-                    Round-Robin Rotation Pool
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-xs">
+                <div className="flex items-center justify-between font-bold text-slate-800">
+                  <span className="flex items-center gap-1.5 text-emerald-700">
+                    <Repeat className="w-3.5 h-3.5" />
+                    Active Pool: {virtualNumbers.length} Virtual Numbers
                   </span>
-                  <span className="text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded text-[11px]">
-                    {virtualNumbers.length} Numbers Active
-                  </span>
+                  <span className="text-slate-500 font-normal">Round-Robin Active</span>
                 </div>
-                <div className="text-[11px] text-slate-600">
-                  Rotating through:{' '}
-                  {virtualNumbers.map((n) => n.phoneNumber).join(', ')}
+                <div className="text-slate-500 text-[11px]">
+                  {virtualNumbers.map((n) => n.phoneNumber).join(' • ')}
                 </div>
               </div>
             )}
 
-            {/* Anti-Ban Safeguards: Spintax & Sleep Delay Slider (Saasyto pattern) */}
+            {/* Direct Message Composer (Free text + Spintax) */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  Message Content (Direct Send)
+                </label>
+                <span className="text-[11px] text-slate-400">
+                  Use <code>{'{{1}}'}</code> for name, <code>{'{A|B}'}</code> for Spintax
+                </span>
+              </div>
+              <textarea
+                rows={4}
+                value={messageText}
+                onChange={(e) => setMessageText(e.target.value)}
+                placeholder="Type your WhatsApp broadcast message here..."
+                className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm font-sans focus:ring-2 focus:ring-[#128C7E] focus:outline-none"
+              />
+            </div>
+
+            {/* Anti-Ban Safeguards: Spintax & Sleep Delay Slider */}
             <div className="p-3 bg-amber-50/60 border border-amber-200/80 rounded-xl space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-amber-600" />
-                  Anti-Ban Delivery Safeguards
+                  Anti-Ban Delivery Throttling
                 </span>
-                <span className="text-[10px] text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded font-semibold">
-                  Saasyto Protection
+                <span className="text-[10px] text-amber-700 bg-amber-100 px-2 py-0.5 rounded font-semibold">
+                  Multi-Session Protection
                 </span>
               </div>
 
@@ -307,7 +321,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
               <div className="flex items-center justify-between text-xs text-slate-700">
                 <div className="flex items-center gap-1.5">
                   <Shuffle className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Enable Spintax Variations <code>{`{Hi|Hello|Greetings}`}</code></span>
+                  <span>Randomize Spintax variations</span>
                 </div>
                 <input
                   type="checkbox"
@@ -322,7 +336,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
                 <div className="flex justify-between text-xs text-slate-700 mb-1">
                   <span className="flex items-center gap-1.5">
                     <Clock className="w-3.5 h-3.5 text-slate-500" />
-                    Random Humanized Delay:
+                    Humanized Sleep Interval:
                   </span>
                   <span className="font-bold text-[#075E54]">{delayIntervalSec} - {delayIntervalSec + 3} seconds</span>
                 </div>
@@ -334,42 +348,17 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
                   onChange={(e) => setDelayIntervalSec(parseInt(e.target.value, 10))}
                   className="w-full accent-[#128C7E]"
                 />
-                <div className="flex justify-between text-[10px] text-slate-400">
-                  <span>Fast (1s)</span>
-                  <span>Recommended (3s-6s)</span>
-                  <span>Safe (10s)</span>
-                </div>
               </div>
-            </div>
-
-            {/* Template Selection */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                WhatsApp Template / Message
-              </label>
-              <select
-                value={selectedTemplateId}
-                onChange={(e) => setSelectedTemplateId(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-[#128C7E] focus:outline-none"
-              >
-                {templates.map((tmpl) => (
-                  <option key={tmpl.id} value={tmpl.id}>
-                    {tmpl.name} ({tmpl.category})
-                  </option>
-                ))}
-              </select>
             </div>
 
             {/* Wallet Cost Breakdown */}
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-xs">
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-xs">
               <div className="flex justify-between text-slate-600">
-                <span>Available Wallet Balance:</span>
+                <span>Available Balance:</span>
                 <span className="font-semibold text-slate-900">₹{walletAvailableINR}</span>
               </div>
               <div className="flex justify-between text-slate-600">
-                <span>
-                  Campaign Cost ({eligibleRecipients.length} msgs @ ₹{perMessageRateINR.toFixed(2)}):
-                </span>
+                <span>Total Campaign Cost ({eligibleRecipients.length} msgs @ ₹1.00):</span>
                 <span className="font-bold text-[#075E54]">₹{totalCostINR.toFixed(2)}</span>
               </div>
             </div>
@@ -399,17 +388,17 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
               <div className="bg-[#075E54] text-white -m-3 mb-3 p-2.5 px-3 flex items-center justify-between shadow-sm">
                 <div className="flex items-center space-x-2">
                   <div className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold">
-                    WABA
+                    WA
                   </div>
                   <div>
                     <div className="text-xs font-bold leading-tight flex items-center gap-1">
-                      {dispatchMode === 'VIRTUAL_NUMBER_POOL'
-                        ? 'Multi-Number Pool (+91)'
+                      {dispatchType === 'MULTI_NUMBER_POOL'
+                        ? 'Virtual Number Pool'
                         : selectedNumber?.phoneNumber}
                       <CheckCircle2 className="w-3 h-3 text-[#25D366] fill-[#25D366]" />
                     </div>
                     <div className="text-[10px] text-emerald-100">
-                      {dispatchMode === 'VIRTUAL_NUMBER_POOL' ? 'Round-Robin Pool' : 'Verified Business'}
+                      {dispatchType === 'MULTI_NUMBER_POOL' ? 'Round-Robin Pool (+91)' : 'Virtual Number Gateway'}
                     </div>
                   </div>
                 </div>
@@ -417,39 +406,19 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
 
               {/* Chat Bubble Area */}
               <div className="space-y-2 my-auto">
-                {/* Message Bubble */}
                 <div className="bg-white rounded-lg rounded-tl-none p-3 shadow-sm border border-slate-200/60 max-w-[95%] space-y-1.5">
-                  {selectedTemplate.header && (
-                    <div className="font-bold text-xs text-slate-800 border-b border-slate-100 pb-1">
-                      {selectedTemplate.header}
-                    </div>
-                  )}
                   <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
                     {renderedBody}
                   </p>
                   <div className="text-[10px] text-right text-slate-400">
-                    Just now • {spintaxEnabled ? 'Spintax Variant' : 'Standard'}
+                    Just now &bull; {spintaxEnabled ? 'Spintax Dynamic' : 'Direct'}
                   </div>
                 </div>
-
-                {/* Quick-reply action buttons preview */}
-                {selectedTemplate.buttons && (
-                  <div className="space-y-1.5 pt-1">
-                    {selectedTemplate.buttons.map((btn, idx) => (
-                      <div
-                        key={idx}
-                        className="bg-white text-[#128C7E] text-xs font-semibold py-1.5 px-3 rounded-md text-center shadow-xs border border-slate-200 flex items-center justify-center gap-1"
-                      >
-                        {btn}
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
 
               {/* Footer notice */}
               <div className="text-[9px] text-slate-500 text-center pt-2">
-                Protected by Anti-Ban Throttling &bull; WhatsApp Multi-Session
+                Dispatched via Indian Virtual Number Gateway
               </div>
             </div>
           </div>
@@ -459,7 +428,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
         <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex items-center justify-between">
           <div className="text-xs text-slate-500 flex items-center gap-1.5">
             <Repeat className="w-3.5 h-3.5 text-emerald-600" />
-            Mode: <strong>{dispatchMode === 'VIRTUAL_NUMBER_POOL' ? 'Virtual Number Pool' : 'Meta Official API'}</strong>
+            Mode: <strong>{dispatchType === 'MULTI_NUMBER_POOL' ? 'Virtual Number Pool' : 'Dedicated Virtual Number'}</strong>
           </div>
           <div className="flex items-center space-x-3">
             <button
@@ -487,7 +456,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
               ) : (
                 <>
                   <Send className="w-4 h-4" />
-                  Launch Campaign ({eligibleRecipients.length})
+                  Send Campaign ({eligibleRecipients.length})
                 </>
               )}
             </button>

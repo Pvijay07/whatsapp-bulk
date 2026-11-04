@@ -185,10 +185,10 @@ export const App: React.FC = () => {
   // 2. Triggered when client confirms "Send with Virtual Number"
   const handleSendCampaign = (data: {
     campaignName: string;
-    dispatchMode: 'OFFICIAL_CLOUD_API' | 'VIRTUAL_NUMBER_POOL';
+    dispatchType: 'MULTI_NUMBER_POOL' | 'DEDICATED_NUMBER';
     senderNumber: string;
     senderPoolCount?: number;
-    template: MessageTemplate;
+    customMessageText: string;
     recipients: Contact[];
     delayIntervalSec: number;
     spintaxEnabled: boolean;
@@ -198,10 +198,10 @@ export const App: React.FC = () => {
     const newCampaign: Campaign = {
       id: newCampId,
       name: data.campaignName,
-      dispatchMode: data.dispatchMode,
+      dispatchType: data.dispatchType,
       senderNumber: data.senderNumber,
       senderPoolCount: data.senderPoolCount || 1,
-      templateName: data.template.name,
+      customMessageText: data.customMessageText,
       status: 'SENDING',
       totalContacts: data.recipients.length,
       sentCount: 0,
@@ -219,7 +219,7 @@ export const App: React.FC = () => {
     const newMsgLogs: MessageLog[] = data.recipients.map((rec, idx) => {
       // If pool mode, cycle through available numbers
       const assignedNumber =
-        data.dispatchMode === 'VIRTUAL_NUMBER_POOL' && virtualNumbers.length > 0
+        data.dispatchType === 'MULTI_NUMBER_POOL' && virtualNumbers.length > 0
           ? virtualNumbers[idx % virtualNumbers.length].phoneNumber
           : data.senderNumber;
 
@@ -229,7 +229,7 @@ export const App: React.FC = () => {
         contactName: rec.name,
         phoneNumber: rec.phoneNumber,
         status: 'QUEUED',
-        providerMessageId: `wamid.HBgL${rec.phoneNumber.replace('+', '')}FQIAEhgU${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
+        providerMessageId: `VMSG-${rec.phoneNumber.replace('+', '')}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
         costINR: '1.00',
       };
     });
@@ -444,7 +444,7 @@ export const App: React.FC = () => {
                   </div>
                   <h3 className="text-base font-bold text-slate-900">{camp.name}</h3>
                   <div className="text-xs text-slate-600">
-                    Sender: <span className="font-mono font-semibold">{camp.senderNumber}</span> • Template: <span className="font-semibold">{camp.templateName}</span>
+                    Sender: <span className="font-mono font-semibold">{camp.senderNumber}</span> • Mode: <span className="font-semibold text-emerald-700">{camp.dispatchType === 'MULTI_NUMBER_POOL' ? 'Virtual Pool' : 'Dedicated'}</span>
                   </div>
                   <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
                     <span>

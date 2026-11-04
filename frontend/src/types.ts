@@ -13,12 +13,15 @@ export interface VirtualNumber {
   phoneNumber: string;
   provider: string;
   type: 'LANDLINE_DID' | 'MOBILE' | 'TOLL_FREE';
-  status: 'ACTIVE' | 'PENDING_KYC';
+  status: 'ACTIVE' | 'CONNECTED' | 'PENDING_SYNC';
+  sessionStatus: 'CONNECTED' | 'DISCONNECTED' | 'PAIRING';
+  dailyLimit: number;
+  dailySentCount: number;
   monthlyRentalINR: string;
   capabilities: {
     voice: boolean;
     sms: boolean;
-    whatsappEligible: boolean;
+    virtualMessaging: boolean;
   };
   region: string;
 }
@@ -27,15 +30,14 @@ export interface WhatsAppAccount {
   id: string;
   virtualNumberId: string;
   displayNumber: string;
-  qualityRating: 'GREEN' | 'YELLOW' | 'RED';
-  messagingLimitTier: string;
+  sessionState: 'ONLINE' | 'OFFLINE';
   status: 'CONNECTED' | 'PENDING';
 }
 
 export interface MessageTemplate {
   id: string;
   name: string;
-  category: 'MARKETING' | 'UTILITY' | 'AUTHENTICATION';
+  category: 'MARKETING' | 'UTILITY' | 'CUSTOM';
   language: string;
   header?: string;
   bodyText: string;
@@ -55,10 +57,10 @@ export interface AutoResponderRule {
 export interface Campaign {
   id: string;
   name: string;
-  dispatchMode: 'OFFICIAL_CLOUD_API' | 'VIRTUAL_NUMBER_POOL';
+  dispatchType: 'MULTI_NUMBER_POOL' | 'DEDICATED_NUMBER';
   senderNumber: string;
   senderPoolCount?: number;
-  templateName: string;
+  customMessageText: string;
   status: 'DRAFT' | 'SENDING' | 'COMPLETED' | 'PAUSED';
   totalContacts: number;
   sentCount: number;

@@ -64,7 +64,7 @@ export const DeliveryReportsView: React.FC<DeliveryReportsViewProps> = ({
             Real-Time Campaign Delivery Reports
           </h2>
           <p className="text-sm text-slate-500 mt-1">
-            Track live dispatch status, delivery confirmation webhooks, and read receipts from Meta WhatsApp.
+            Track live dispatch status, delivery confirmation receipts, and read status from Virtual Number Gateways.
           </p>
         </div>
 
@@ -165,7 +165,7 @@ export const DeliveryReportsView: React.FC<DeliveryReportsViewProps> = ({
             </div>
 
             <div className="text-xs text-slate-500">
-              Template: <span className="font-semibold text-slate-700">{activeCampaign.templateName}</span> • Debited: ₹{activeCampaign.actualCostINR}
+              Dispatched via <span className="font-semibold text-slate-700">{activeCampaign.senderNumber}</span> • Debited: ₹{activeCampaign.actualCostINR}
             </div>
           </div>
 
@@ -220,7 +220,7 @@ export const DeliveryReportsView: React.FC<DeliveryReportsViewProps> = ({
                 <th className="px-6 py-3.5">Recipient</th>
                 <th className="px-6 py-3.5">Phone Number (+91)</th>
                 <th className="px-6 py-3.5">Delivery Status</th>
-                <th className="px-6 py-3.5">Provider Message ID (WABA)</th>
+                <th className="px-6 py-3.5">Gateway Message ID</th>
                 <th className="px-6 py-3.5">Cost</th>
                 <th className="px-6 py-3.5 text-right">Timeline</th>
               </tr>

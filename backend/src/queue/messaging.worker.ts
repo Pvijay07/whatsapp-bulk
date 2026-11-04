@@ -2,20 +2,20 @@ import { Worker, Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import { PrismaClient, MessageStatus, CampaignStatus } from '@prisma/client';
 import { redisConnection, MESSAGING_QUEUE_NAME, SendMessageJobData } from './messaging.queue';
-import { MetaCloudApiAdapter } from '../providers/messaging/meta-cloud-api.adapter';
+import { VirtualGatewayAdapter } from '../providers/messaging/virtual-gateway.adapter';
 import { MockMessagingAdapter } from '../providers/messaging/mock-messaging.adapter';
 import { MessagingProvider } from '../providers/messaging/messaging-provider.interface';
 
 const logger = new Logger('MessagingWorker');
 const prisma = new PrismaClient();
 
-// Resolve active provider adapter
+// Resolve active provider adapter: Virtual Number Gateway by default
 function getProvider(): MessagingProvider {
-  const providerName = process.env.WHATSAPP_PROVIDER || 'meta_cloud';
+  const providerName = process.env.WHATSAPP_PROVIDER || 'virtual_gateway';
   if (providerName === 'mock') {
     return new MockMessagingAdapter();
   }
-  return new MetaCloudApiAdapter();
+  return new VirtualGatewayAdapter();
 }
 
 const provider = getProvider();

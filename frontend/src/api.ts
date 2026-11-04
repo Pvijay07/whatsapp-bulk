@@ -133,10 +133,10 @@ export class DynamicStoreManager {
           const formatted = res.data.map((c: any) => ({
             id: c.id,
             name: c.name,
-            dispatchMode: c.dispatchMode || 'VIRTUAL_NUMBER_POOL',
+            dispatchType: c.dispatchType || 'MULTI_NUMBER_POOL',
             senderNumber: c.senderAccount?.displayNumber || '+918045678901',
             senderPoolCount: c.senderPoolCount || 1,
-            templateName: c.template?.name || 'diwali_special_offer',
+            customMessageText: c.customMessageText || 'Broadcast Message',
             status: c.status,
             totalContacts: c.totalContacts,
             sentCount: c.sentCount,
