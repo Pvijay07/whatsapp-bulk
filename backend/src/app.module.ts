@@ -7,6 +7,7 @@ import { PassportModule } from '@nestjs/passport';
 import { PrismaService } from './database/prisma.service';
 
 // Adapters
+import { BaileysSessionService } from './providers/messaging/baileys-session.service';
 import { VirtualGatewayAdapter } from './providers/messaging/virtual-gateway.adapter';
 import { MockMessagingAdapter } from './providers/messaging/mock-messaging.adapter';
 import { ExotelNumberAdapter } from './providers/numbers/exotel.adapter';
@@ -16,6 +17,8 @@ import { MockNumberAdapter } from './providers/numbers/mock-number.adapter';
 import { AuthService } from './modules/auth/auth.service';
 import { AuthController } from './modules/auth/auth.controller';
 import { JwtStrategy } from './modules/auth/jwt.strategy';
+
+import { SessionController } from './modules/session/session.controller';
 
 import { WalletService } from './modules/wallet/wallet.service';
 import { WalletController } from './modules/wallet/wallet.controller';
@@ -49,6 +52,7 @@ import { WebhooksController } from './modules/webhooks/webhooks.controller';
   ],
   controllers: [
     AuthController,
+    SessionController,
     WalletController,
     ContactsController,
     CampaignsController,
@@ -68,6 +72,7 @@ import { WebhooksController } from './modules/webhooks/webhooks.controller';
     TemplatesService,
     VirtualNumbersService,
     WhatsAppAccountsService,
+    BaileysSessionService,
     VirtualGatewayAdapter,
     MockMessagingAdapter,
     ExotelNumberAdapter,

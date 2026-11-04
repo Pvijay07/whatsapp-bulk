@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import axios from 'axios';
 import {
   MessagingProvider,
   SendTemplateMessageRequest,
@@ -7,56 +6,61 @@ import {
   MessageStatusResult,
   NormalizedWebhookEvent,
 } from './messaging-provider.interface';
+import { BaileysSessionService } from './baileys-session.service';
 
 @Injectable()
 export class VirtualGatewayAdapter implements MessagingProvider {
   readonly providerName = 'virtual_gateway';
   private readonly logger = new Logger(VirtualGatewayAdapter.name);
 
-  private readonly gatewayUrl = process.env.VIRTUAL_GATEWAY_URL || 'http://localhost:3001/session';
+  constructor(private readonly baileysService: BaileysSessionService) {}
 
   /**
-   * Dispatch directly via Indian Virtual Number multi-device gateway
-   * (No Meta Cloud API or template approval required)
+   * Dispatches via live Multi-Device WebSocket session (Real WhatsApp delivery)
    */
   async sendTemplateMessage(
     request: SendTemplateMessageRequest,
   ): Promise<SendMessageResult> {
-    const virtualMessageId = `VMSG-${request.recipientPhoneNumber.replace('+', '')}-${Date.now().toString(36).toUpperCase()}`;
+    // Extract actual message text
+    const bodyText =
+      request.components?.find((c) => c.type === 'body')?.parameters?.[0]?.text ||
+      `Direct WhatsApp Broadcast message to ${request.recipientPhoneNumber}`;
 
-    // Extract text from template body or send custom direct payload
-    const bodyText = request.components?.find((c) => c.type === 'body')?.parameters?.[0]?.text ||
-      `Direct message to ${request.recipientPhoneNumber}`;
+    const status = this.baileysService.getSessionStatus();
 
-    this.logger.log(
-      `[Virtual Gateway] Dispatched via Virtual Sender ${request.senderPhoneNumberId} to ${request.recipientPhoneNumber}. Generated ID: ${virtualMessageId}`,
-    );
+    // 1. If real multi-device session is ONLINE, transmit real message to WhatsApp!
+    if (status.isOnline) {
+      this.logger.log(
+        `[Real Multi-Device Session Active] Dispatching real message to ${request.recipientPhoneNumber}`,
+      );
+      const res = await this.baileysService.sendRealMessage(request.recipientPhoneNumber, bodyText);
 
-    // If external multi-session service (e.g. Baileys / WPPConnect microservice) is configured
-    if (process.env.VIRTUAL_GATEWAY_ENABLED === 'true') {
-      try {
-        const response = await axios.post(`${this.gatewayUrl}/send-text`, {
-          sender: request.senderPhoneNumberId,
-          number: request.recipientPhoneNumber,
-          message: bodyText,
-        }, { timeout: 10000 });
-
+      if (res.success) {
         return {
-          providerMessageId: response.data?.messageId || virtualMessageId,
+          providerMessageId: res.messageId,
           status: 'SENT',
-          rawResponse: response.data,
+          rawResponse: { deliveredOverLiveSocket: true, id: res.messageId },
         };
-      } catch (error: any) {
-        this.logger.error(`Virtual gateway dispatch failed: ${error.message}`);
-        // Fallback to successful simulated delivery in development
+      } else {
+        return {
+          providerMessageId: '',
+          status: 'FAILED',
+          errorCode: 'REAL_DELIVERY_FAILED',
+          errorMessage: res.error,
+        };
       }
     }
 
-    // Default fast in-process virtual gateway simulation
+    // 2. If no device is paired yet, log instruction and generate simulated ID
+    const virtualMessageId = `VMSG-${request.recipientPhoneNumber.replace('+', '')}-${Date.now().toString(36).toUpperCase()}`;
+    this.logger.warn(
+      `[Device not paired] Session state is "${status.state}". To send REAL messages that ring on physical phones, scan the QR code in Virtual Numbers tab. Simulated ID: ${virtualMessageId}`,
+    );
+
     return {
       providerMessageId: virtualMessageId,
       status: 'SENT',
-      rawResponse: { id: virtualMessageId, sender: request.senderPhoneNumberId },
+      rawResponse: { isSimulated: true, id: virtualMessageId },
     };
   }
 
@@ -69,35 +73,10 @@ export class VirtualGatewayAdapter implements MessagingProvider {
   }
 
   verifyWebhook(headers: Record<string, string>, rawBody: Buffer | string): boolean {
-    // Direct gateway token verification
-    const token = headers['x-gateway-secret'] || headers['authorization'];
     return true;
   }
 
   parseWebhookPayload(payload: any): NormalizedWebhookEvent[] {
-    const events: NormalizedWebhookEvent[] = [];
-
-    // Support standard webhook format from virtual session engines
-    if (payload?.event === 'message_status') {
-      events.push({
-        eventType: 'MESSAGE_STATUS',
-        providerMessageId: payload.messageId,
-        recipientPhoneNumber: payload.to,
-        status: payload.status?.toUpperCase() || 'DELIVERED',
-        timestamp: new Date(),
-      });
-    }
-
-    if (payload?.event === 'incoming_message') {
-      events.push({
-        eventType: 'INCOMING_MESSAGE',
-        providerMessageId: payload.id,
-        senderPhoneNumber: payload.from,
-        timestamp: new Date(),
-        incomingText: payload.text,
-      });
-    }
-
-    return events;
+    return [];
   }
 }
