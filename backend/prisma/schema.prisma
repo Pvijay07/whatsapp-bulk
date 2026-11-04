@@ -1,0 +1,332 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum OrgStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum NumberStatus {
+  AVAILABLE
+  ALLOCATED
+  PENDING_VERIFICATION
+  SUSPENDED
+  RELEASED
+}
+
+enum WhatsAppAccountStatus {
+  PENDING
+  CONNECTED
+  RESTRICTED
+  BANNED
+  DISCONNECTED
+}
+
+enum ConsentStatus {
+  OPTED_IN
+  OPTED_OUT
+  UNCONFIRMED
+}
+
+enum TemplateStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  PAUSED
+}
+
+enum CampaignStatus {
+  DRAFT
+  VALIDATING
+  SCHEDULED
+  QUEUED
+  SENDING
+  PAUSED
+  COMPLETED
+  FAILED
+}
+
+enum MessageStatus {
+  QUEUED
+  SUBMITTED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum TransactionType {
+  CREDIT
+  DEBIT
+  ESCROW_HOLD
+  ESCROW_RELEASE
+}
+
+model Organization {
+  id               String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name             String               @db.VarChar(150)
+  status           OrgStatus            @default(ACTIVE)
+  createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  users            User[]
+  virtualNumbers   VirtualNumber[]
+  whatsappAccounts WhatsAppAccount[]
+  contacts         Contact[]
+  contactGroups    ContactGroup[]
+  templates        MessageTemplate[]
+  campaigns        Campaign[]
+  messages         Message[]
+  wallet           Wallet?
+  transactions     WalletTransaction[]
+  consents         ContactConsent[]
+
+  @@map("organizations")
+}
+
+model User {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  email          String       @db.VarChar(255)
+  passwordHash   String       @map("password_hash") @db.Text
+  role           UserRole     @default(MEMBER)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, email])
+  @@map("users")
+}
+
+model VirtualNumber {
+  id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String            @map("organization_id") @db.Uuid
+  provider         String            @db.VarChar(50)
+  providerNumberId String?           @map("provider_number_id") @db.VarChar(255)
+  phoneNumber      String            @map("phone_number") @db.VarChar(20)
+  countryCode      String            @default("+91") @map("country_code") @db.VarChar(5)
+  capabilities     Json              @default("{}")
+  status           NumberStatus      @default(PENDING_VERIFICATION)
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  whatsappAccounts WhatsAppAccount[]
+
+  @@unique([provider, providerNumberId])
+  @@index([organizationId, phoneNumber])
+  @@map("virtual_numbers")
+}
+
+model WhatsAppAccount {
+  id                String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String                @map("organization_id") @db.Uuid
+  virtualNumberId   String?               @map("virtual_number_id") @db.Uuid
+  provider          String                @db.VarChar(50)
+  externalAccountId String?               @map("external_account_id") @db.VarChar(255)
+  displayNumber     String                @map("display_number") @db.VarChar(20)
+  qualityRating     String                @default("GREEN") @map("quality_rating") @db.VarChar(20)
+  messagingLimitTier String               @default("TIER_1K") @map("messaging_limit_tier") @db.VarChar(30)
+  status            WhatsAppAccountStatus @default(PENDING)
+  createdAt         DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization      Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  virtualNumber     VirtualNumber?        @relation(fields: [virtualNumberId], references: [id], onDelete: SetNull)
+  campaigns         Campaign[]
+  messages          Message[]
+
+  @@index([organizationId, status])
+  @@map("whatsapp_accounts")
+}
+
+model Contact {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  phoneNumber    String           @map("phone_number") @db.VarChar(20)
+  name           String?          @db.VarChar(150)
+  metadata       Json             @default("{}")
+  isSuppressed   Boolean          @default(false) @map("is_suppressed")
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  consents       ContactConsent[]
+  groupMembers   ContactGroupMember[]
+  messages       Message[]
+
+  @@unique([organizationId, phoneNumber])
+  @@index([organizationId, isSuppressed])
+  @@map("contacts")
+}
+
+model ContactConsent {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  contactId      String        @map("contact_id") @db.Uuid
+  channel        String        @db.VarChar(30)
+  purpose        String        @db.VarChar(50)
+  consentStatus  ConsentStatus @default(OPTED_IN) @map("consent_status")
+  source         String?       @db.VarChar(100)
+  consentedAt    DateTime?     @map("consented_at") @db.Timestamptz(6)
+  revokedAt      DateTime?     @map("revoked_at") @db.Timestamptz(6)
+
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contact        Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, contactId, consentStatus])
+  @@map("contact_consents")
+}
+
+model ContactGroup {
+  id             String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String               @map("organization_id") @db.Uuid
+  name           String               @db.VarChar(100)
+  description    String?              @db.Text
+  createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members        ContactGroupMember[]
+  campaigns      Campaign[]
+
+  @@unique([organizationId, name])
+  @@map("contact_groups")
+}
+
+model ContactGroupMember {
+  id        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  groupId   String       @map("group_id") @db.Uuid
+  contactId String       @map("contact_id") @db.Uuid
+  addedAt   DateTime     @default(now()) @map("added_at") @db.Timestamptz(6)
+
+  group     ContactGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  contact   Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, contactId])
+  @@map("contact_group_members")
+}
+
+model MessageTemplate {
+  id                 String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String         @map("organization_id") @db.Uuid
+  name               String         @db.VarChar(100)
+  category           String         @db.VarChar(50) // MARKETING, UTILITY, AUTHENTICATION
+  language           String         @default("en_US") @db.VarChar(10)
+  providerTemplateId String?        @map("provider_template_id") @db.VarChar(255)
+  components         Json           @default("[]")
+  status             TemplateStatus @default(DRAFT)
+  createdAt          DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization       Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaigns          Campaign[]
+
+  @@unique([organizationId, name, language])
+  @@map("message_templates")
+}
+
+model Campaign {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String          @map("organization_id") @db.Uuid
+  name            String          @db.VarChar(200)
+  senderAccountId String          @map("sender_account_id") @db.Uuid
+  templateId      String?         @map("template_id") @db.Uuid
+  contactGroupId  String?         @map("contact_group_id") @db.Uuid
+  status          CampaignStatus  @default(DRAFT)
+  scheduledAt     DateTime?       @map("scheduled_at") @db.Timestamptz(6)
+  totalContacts   Int             @default(0) @map("total_contacts")
+  sentCount       Int             @default(0) @map("sent_count")
+  deliveredCount  Int             @default(0) @map("delivered_count")
+  failedCount     Int             @default(0) @map("failed_count")
+  readCount       Int             @default(0) @map("read_count")
+  reservedPaise   BigInt          @default(0) @map("reserved_paise")
+  actualPaiseCost BigInt          @default(0) @map("actual_paise_cost")
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  senderAccount   WhatsAppAccount @relation(fields: [senderAccountId], references: [id], onDelete: Restrict)
+  template        MessageTemplate?@relation(fields: [templateId], references: [id], onDelete: SetNull)
+  contactGroup    ContactGroup?   @relation(fields: [contactGroupId], references: [id], onDelete: SetNull)
+  messages        Message[]
+
+  @@index([organizationId, status])
+  @@map("campaigns")
+}
+
+model Message {
+  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String          @map("organization_id") @db.Uuid
+  campaignId        String?         @map("campaign_id") @db.Uuid
+  contactId         String          @map("contact_id") @db.Uuid
+  senderAccountId   String          @map("sender_account_id") @db.Uuid
+  providerMessageId String?         @map("provider_message_id") @db.VarChar(255)
+  status            MessageStatus   @default(QUEUED)
+  errorCode         String?         @map("error_code") @db.VarChar(100)
+  errorMessage      String?         @map("error_message") @db.Text
+  costPaise         BigInt          @default(0) @map("cost_paise")
+  sentAt            DateTime?       @map("sent_at") @db.Timestamptz(6)
+  deliveredAt       DateTime?       @map("delivered_at") @db.Timestamptz(6)
+  readAt            DateTime?       @map("read_at") @db.Timestamptz(6)
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization      Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaign          Campaign?       @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  contact           Contact         @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  senderAccount     WhatsAppAccount @relation(fields: [senderAccountId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, campaignId])
+  @@index([status])
+  @@index([providerMessageId])
+  @@map("messages")
+}
+
+model Wallet {
+  id             String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String              @unique @map("organization_id") @db.Uuid
+  currency       String              @default("INR") @db.Char(3)
+  balancePaise   BigInt              @default(0) @map("balance_paise")
+  reservedPaise  BigInt              @default(0) @map("reserved_paise")
+  updatedAt      DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  transactions   WalletTransaction[]
+
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String          @map("organization_id") @db.Uuid
+  walletId        String          @map("wallet_id") @db.Uuid
+  transactionType TransactionType @map("transaction_type")
+  amountPaise     BigInt          @map("amount_paise")
+  balanceAfter    BigInt          @map("balance_after")
+  referenceId     String?         @map("reference_id") @db.Uuid
+  idempotencyKey  String          @unique @map("idempotency_key") @db.VarChar(255)
+  metadata        Json            @default("{}")
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  wallet          Wallet          @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@map("wallet_transactions")
+}
+
