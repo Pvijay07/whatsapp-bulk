@@ -10,12 +10,21 @@ import {
   Plus,
 } from 'lucide-react';
 
+interface NavItem {
+  id: 'crm' | 'campaigns' | 'reports' | 'numbers' | 'wallet';
+  label: string;
+  icon: any;
+  badge?: string;
+  badgeHighlight?: boolean;
+}
+
 interface NavbarProps {
   currentTab: 'crm' | 'campaigns' | 'reports' | 'numbers' | 'wallet';
   onSelectTab: (tab: 'crm' | 'campaigns' | 'reports' | 'numbers' | 'wallet') => void;
   walletBalanceINR: string;
   activeCampaignsCount: number;
   onOpenQuickCampaign: () => void;
+  isLiveSyncing?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -24,11 +33,12 @@ export const Navbar: React.FC<NavbarProps> = ({
   walletBalanceINR,
   activeCampaignsCount,
   onOpenQuickCampaign,
+  isLiveSyncing,
 }) => {
-  const navItems = [
+  const navItems: NavItem[] = [
     {
       id: 'crm',
-      label: 'CRM & Contacts',
+      label: 'Contacts',
       icon: Users,
       badge: '5',
     },
@@ -68,7 +78,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <span className="text-base font-bold text-white tracking-tight">WhatsApp SaaS</span>
+                <span className="text-base font-bold text-white tracking-tight">SalesBuster</span>
                 <span className="text-[10px] bg-emerald-500/20 text-emerald-400 font-bold px-1.5 py-0.5 rounded border border-emerald-500/30">
                   +91
                 </span>
@@ -115,8 +125,14 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Right Section: Tenant Info, Wallet Balance & Quick Campaign Action */}
           <div className="flex items-center space-x-3 shrink-0">
+            {/* Live Dynamic Engine Indicator */}
+            <div className="hidden lg:flex items-center gap-1.5 text-[11px] font-semibold text-emerald-400 bg-emerald-950/70 px-2.5 py-1 rounded-full border border-emerald-500/30">
+              <span className="w-2 h-2 rounded-full bg-[#25D366] animate-pulse" />
+              <span>{isLiveSyncing ? 'Live Syncing...' : 'Dynamic Engine Active'}</span>
+            </div>
+
             {/* Tenant Pill */}
-            <div className="hidden lg:flex items-center gap-1.5 text-xs text-slate-400 bg-slate-800/80 px-2.5 py-1.5 rounded-lg border border-slate-700/60">
+            <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-400 bg-slate-800/80 px-2.5 py-1.5 rounded-lg border border-slate-700/60">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
               <span className="font-medium text-slate-200">Demo Enterprises</span>
             </div>

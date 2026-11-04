@@ -1,12 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
-  initialContacts,
+  dynamicStore,
+  loadFromStorage,
+  saveToStorage,
+} from './api';
+import {
   initialNumbers,
   initialWhatsAppAccounts,
   initialTemplates,
   initialCampaigns,
   initialMessages,
   initialWallet,
+  initialContacts,
 } from './store';
 import { Contact, VirtualNumber, Campaign, MessageLog, WalletData, MessageTemplate } from './types';
 import { Navbar } from './components/Navbar';
@@ -15,19 +20,32 @@ import { WhatsAppModal } from './components/WhatsAppModal';
 import { DeliveryReportsView } from './components/DeliveryReportsView';
 import { VirtualNumbersView } from './components/VirtualNumbersView';
 import { WalletView } from './components/WalletView';
-import { MessageSquare, CheckCircle2, ShieldCheck, Send } from 'lucide-react';
+import { MessageSquare, CheckCircle2, Send, Sparkles } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<'crm' | 'campaigns' | 'reports' | 'numbers' | 'wallet'>('crm');
 
-  // Application state
-  const [contacts, setContacts] = useState<Contact[]>(initialContacts);
-  const [virtualNumbers, setVirtualNumbers] = useState<VirtualNumber[]>(initialNumbers);
-  const [whatsAppAccounts, setWhatsAppAccounts] = useState(initialWhatsAppAccounts);
-  const [templates, setTemplates] = useState<MessageTemplate[]>(initialTemplates);
-  const [campaigns, setCampaigns] = useState<Campaign[]>(initialCampaigns);
-  const [messages, setMessages] = useState<MessageLog[]>(initialMessages);
-  const [wallet, setWallet] = useState<WalletData>(initialWallet);
+  // Dynamic application state
+  const [contacts, setContacts] = useState<Contact[]>(() =>
+    loadFromStorage('wa_saas_contacts_v1', initialContacts),
+  );
+  const [virtualNumbers, setVirtualNumbers] = useState<VirtualNumber[]>(() =>
+    loadFromStorage('wa_saas_numbers_v1', initialNumbers),
+  );
+  const [templates, setTemplates] = useState<MessageTemplate[]>(() =>
+    loadFromStorage('wa_saas_templates_v1', initialTemplates),
+  );
+  const [campaigns, setCampaigns] = useState<Campaign[]>(() =>
+    loadFromStorage('wa_saas_campaigns_v1', initialCampaigns),
+  );
+  const [messages, setMessages] = useState<MessageLog[]>(() =>
+    loadFromStorage('wa_saas_messages_v1', initialMessages),
+  );
+  const [wallet, setWallet] = useState<WalletData>(() =>
+    loadFromStorage('wa_saas_wallet_v1', initialWallet),
+  );
+
+  const [isLiveSyncing, setIsLiveSyncing] = useState(false);
 
   // WhatsApp Campaign Modal State
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
@@ -40,6 +58,114 @@ export const App: React.FC = () => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 4000);
   };
+
+  // Sync state to local storage whenever it changes
+  useEffect(() => {
+    saveToStorage('wa_saas_contacts_v1', contacts);
+  }, [contacts]);
+
+  useEffect(() => {
+    saveToStorage('wa_saas_numbers_v1', virtualNumbers);
+  }, [virtualNumbers]);
+
+  useEffect(() => {
+    saveToStorage('wa_saas_campaigns_v1', campaigns);
+  }, [campaigns]);
+
+  useEffect(() => {
+    saveToStorage('wa_saas_messages_v1', messages);
+  }, [messages]);
+
+  useEffect(() => {
+    saveToStorage('wa_saas_wallet_v1', wallet);
+  }, [wallet]);
+
+  // Initial check against backend
+  useEffect(() => {
+    const initBackend = async () => {
+      setIsLiveSyncing(true);
+      await dynamicStore.checkBackendConnection();
+      setIsLiveSyncing(false);
+    };
+    initBackend();
+  }, []);
+
+  // Dynamic Asynchronous Campaign Progression Worker
+  // Continuously monitors any campaign in 'SENDING' status and transitions message delivery
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setMessages((prevMessages) => {
+        let changed = false;
+        const now = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+        const updatedMessages = prevMessages.map((msg) => {
+          // 1. Queued -> Sent
+          if (msg.status === 'QUEUED') {
+            changed = true;
+            return {
+              ...msg,
+              status: 'SENT' as const,
+              sentAt: now,
+              providerMessageId: msg.providerMessageId.startsWith('wamid.')
+                ? msg.providerMessageId
+                : `wamid.HBgL${msg.phoneNumber.replace('+', '')}FQIAEhgU${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
+            };
+          }
+
+          // 2. Sent -> Delivered
+          if (msg.status === 'SENT') {
+            changed = true;
+            return {
+              ...msg,
+              status: 'DELIVERED' as const,
+              deliveredAt: now,
+            };
+          }
+
+          // 3. Delivered -> Read (simulating user opening WhatsApp)
+          if (msg.status === 'DELIVERED' && Math.random() > 0.3) {
+            changed = true;
+            return {
+              ...msg,
+              status: 'READ' as const,
+              readAt: now,
+            };
+          }
+
+          return msg;
+        });
+
+        // If messages progressed, update corresponding campaign statistics dynamically
+        if (changed) {
+          setCampaigns((prevCampaigns) =>
+            prevCampaigns.map((camp) => {
+              const campMsgs = updatedMessages.filter((m) => m.campaignId === camp.id);
+              if (campMsgs.length === 0) return camp;
+
+              const sent = campMsgs.filter((m) => m.status !== 'QUEUED').length;
+              const delivered = campMsgs.filter((m) => m.status === 'DELIVERED' || m.status === 'READ').length;
+              const read = campMsgs.filter((m) => m.status === 'READ').length;
+              const failed = campMsgs.filter((m) => m.status === 'FAILED').length;
+              const isDone = delivered + failed >= camp.totalContacts && camp.totalContacts > 0;
+
+              return {
+                ...camp,
+                sentCount: sent,
+                deliveredCount: delivered,
+                readCount: read,
+                failedCount: failed,
+                status: isDone ? ('COMPLETED' as const) : camp.status,
+              };
+            }),
+          );
+        }
+
+        return changed ? updatedMessages : prevMessages;
+      });
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   // 1. Triggered when client clicks on WhatsApp in CRM
   const handleOpenWhatsApp = (contact?: Contact | null) => {
@@ -72,7 +198,7 @@ export const App: React.FC = () => {
       createdAt: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
     };
 
-    // Create queued message records
+    // Create dynamic queued message records
     const newMsgLogs: MessageLog[] = data.recipients.map((rec, idx) => ({
       id: `msg-${Date.now()}-${idx}`,
       campaignId: newCampId,
@@ -108,71 +234,16 @@ export const App: React.FC = () => {
       ],
     }));
 
-    showToast(`Campaign launched! Dispatched ${data.recipients.length} messages via ${data.senderNumber}`);
+    showToast(`Campaign dispatched! ${data.recipients.length} messages sent via ${data.senderNumber}`);
 
-    // Switch view to delivery reports so client immediately sees live reports!
+    // Transition immediately to Delivery Reports so client watches live delivery!
     setCurrentTab('reports');
-
-    // Simulate realistic asynchronous delivery webhook events
-    // Phase 1: Dispatched to Meta (Sent) in 500ms
-    setTimeout(() => {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.campaignId === newCampId ? { ...m, status: 'SENT', sentAt: 'Just now' } : m,
-        ),
-      );
-      setCampaigns((prev) =>
-        prev.map((c) =>
-          c.id === newCampId ? { ...c, sentCount: data.recipients.length } : c,
-        ),
-      );
-    }, 500);
-
-    // Phase 2: Delivered in 1.4s
-    setTimeout(() => {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.campaignId === newCampId ? { ...m, status: 'DELIVERED', deliveredAt: 'Just now' } : m,
-        ),
-      );
-      setCampaigns((prev) =>
-        prev.map((c) =>
-          c.id === newCampId ? { ...c, deliveredCount: data.recipients.length } : c,
-        ),
-      );
-    }, 1400);
-
-    // Phase 3: Read receipts in 2.8s
-    setTimeout(() => {
-      setMessages((prev) =>
-        prev.map((m, i) =>
-          m.campaignId === newCampId && i % 4 !== 0
-            ? { ...m, status: 'READ', readAt: 'Just now' }
-            : m,
-        ),
-      );
-      setCampaigns((prev) =>
-        prev.map((c) =>
-          c.id === newCampId
-            ? {
-                ...c,
-                status: 'COMPLETED',
-                readCount: Math.ceil(data.recipients.length * 0.75),
-              }
-            : c,
-        ),
-      );
-    }, 2800);
   };
 
   // Add Contact
-  const handleAddContact = (contactData: Omit<Contact, 'id' | 'createdAt'>) => {
-    const newContact: Contact = {
-      id: `c-${Date.now()}`,
-      ...contactData,
-      createdAt: new Date().toISOString().split('T')[0],
-    };
-    setContacts((prev) => [newContact, ...prev]);
+  const handleAddContact = async (contactData: Omit<Contact, 'id' | 'createdAt'>) => {
+    const created = await dynamicStore.createContact(contactData);
+    setContacts((prev) => [created, ...prev]);
     showToast(`Contact "${contactData.name}" added to CRM!`);
   };
 
@@ -204,30 +275,35 @@ export const App: React.FC = () => {
 
   // Provision virtual number
   const handlePurchaseNumber = (num: VirtualNumber) => {
-    setVirtualNumbers((prev) => [num, ...prev]);
-    showToast(`Number ${num.phoneNumber} provisioned via ${num.provider}!`);
-  };
+    const rentalCost = parseFloat(num.monthlyRentalINR) || 599.00;
+    const newBal = (parseFloat(wallet.balanceINR) - rentalCost).toFixed(2);
 
-  // Recharge wallet
-  const handleTopUp = (amountINR: number) => {
-    const newBalance = (parseFloat(wallet.balanceINR) + amountINR).toFixed(2);
+    setVirtualNumbers((prev) => [num, ...prev]);
     setWallet((prev) => ({
       ...prev,
-      balanceINR: newBalance,
-      availableINR: newBalance,
+      balanceINR: newBal,
+      availableINR: newBal,
       transactions: [
         {
-          id: `tx-${Date.now()}`,
-          transactionType: 'CREDIT',
-          amountINR: `+${amountINR.toFixed(2)}`,
-          balanceAfterINR: newBalance,
-          idempotencyKey: `topup_pg_${Date.now()}`,
-          reason: `Wallet Recharge via Cashfree UPI (₹${amountINR})`,
+          id: `tx-num-${Date.now()}`,
+          transactionType: 'DEBIT',
+          amountINR: `-${rentalCost.toFixed(2)}`,
+          balanceAfterINR: newBal,
+          idempotencyKey: `num_rent_${num.id}_${Date.now()}`,
+          reason: `Virtual Number Monthly Rental: ${num.phoneNumber} (${num.provider})`,
           createdAt: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
         },
         ...prev.transactions,
       ],
     }));
+
+    showToast(`Number ${num.phoneNumber} provisioned via ${num.provider}!`);
+  };
+
+  // Recharge wallet
+  const handleTopUp = async (amountINR: number) => {
+    const updated = await dynamicStore.topUpWallet(amountINR);
+    setWallet(updated);
     showToast(`Wallet credited with ₹${amountINR.toLocaleString('en-IN')}!`);
   };
 
@@ -248,6 +324,7 @@ export const App: React.FC = () => {
         walletBalanceINR={wallet.availableINR}
         activeCampaignsCount={campaigns.filter((c) => c.status === 'SENDING').length}
         onOpenQuickCampaign={() => handleOpenWhatsApp(null)}
+        isLiveSyncing={isLiveSyncing}
       />
 
       {/* Main Content Area */}
@@ -267,10 +344,10 @@ export const App: React.FC = () => {
               <div>
                 <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
                   <Send className="w-6 h-6 text-[#128C7E]" />
-                  Campaign History & Senders
+                  Campaign History & Live Senders
                 </h2>
                 <p className="text-sm text-slate-500 mt-1">
-                  Manage your active WhatsApp templates and campaign runs.
+                  Manage active WhatsApp templates and campaign runs across your Indian virtual numbers.
                 </p>
               </div>
               <button
@@ -289,7 +366,15 @@ export const App: React.FC = () => {
                   className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-3"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800">
+                    <span
+                      className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${
+                        camp.status === 'COMPLETED'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : camp.status === 'SENDING'
+                          ? 'bg-blue-100 text-blue-800 animate-pulse'
+                          : 'bg-amber-100 text-amber-800'
+                      }`}
+                    >
                       ● {camp.status}
                     </span>
                     <span className="text-xs text-slate-400">{camp.createdAt}</span>
@@ -306,7 +391,7 @@ export const App: React.FC = () => {
                       onClick={() => setCurrentTab('reports')}
                       className="text-[#128C7E] font-bold hover:underline"
                     >
-                      View Report →
+                      View Live Report →
                     </button>
                   </div>
                 </div>
@@ -338,14 +423,14 @@ export const App: React.FC = () => {
         )}
       </main>
 
-      {/* The Central WhatsApp Campaign Creation & Dispatch Modal */}
+      {/* Central WhatsApp Campaign Creation & Dispatch Modal */}
       <WhatsAppModal
         isOpen={isWhatsAppModalOpen}
         onClose={() => setIsWhatsAppModalOpen(false)}
         selectedContact={targetContactForModal}
         allContacts={contacts}
         virtualNumbers={virtualNumbers}
-        whatsAppAccounts={whatsAppAccounts}
+        whatsAppAccounts={initialWhatsAppAccounts}
         templates={templates}
         walletAvailableINR={wallet.availableINR}
         onSendCampaign={handleSendCampaign}
@@ -353,4 +438,5 @@ export const App: React.FC = () => {
     </div>
   );
 };
+
 export default App;
