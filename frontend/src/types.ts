@@ -89,3 +89,4 @@ export interface WalletData {
   availableINR: string;
   transactions: WalletTransaction[];
 }
+

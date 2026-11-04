@@ -219,3 +219,4 @@ export const WalletView: React.FC<WalletViewProps> = ({ wallet, onTopUp }) => {
     </div>
   );
 };
+

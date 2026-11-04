@@ -43,7 +43,7 @@ async function bootstrap() {
   const port = process.env.PORT || 3000;
   await app.listen(port);
 
-  logger.log(`WhatsApp SaaS API is running on: http://localhost:${port}/${globalPrefix}`);
+  logger.log(`SalesBuster API is running on: http://localhost:${port}/${globalPrefix}`);
   logger.log(`Interactive API Docs available on: http://localhost:${port}/api/docs`);
 }
 

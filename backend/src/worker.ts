@@ -4,7 +4,7 @@ import { messagingWorker } from './queue/messaging.worker';
 const logger = new Logger('WorkerBootstrap');
 
 async function bootstrap() {
-  logger.log('Starting WhatsApp SaaS Background Worker...');
+  logger.log('Starting SalesBuster Background Worker...');
   logger.log(`Worker listening to queue: ${messagingWorker.name}`);
 
   process.on('SIGTERM', async () => {

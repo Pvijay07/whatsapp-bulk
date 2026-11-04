@@ -347,3 +347,4 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
     </div>
   );
 };
+

@@ -9,7 +9,7 @@ import {
   initialWallet,
 } from './store';
 import { Contact, VirtualNumber, Campaign, MessageLog, WalletData, MessageTemplate } from './types';
-import { Sidebar } from './components/Sidebar';
+import { Navbar } from './components/Navbar';
 import { ContactsView } from './components/ContactsView';
 import { WhatsAppModal } from './components/WhatsAppModal';
 import { DeliveryReportsView } from './components/DeliveryReportsView';
@@ -232,25 +232,26 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="flex min-h-screen bg-slate-100 font-sans antialiased text-slate-900">
+    <div className="min-h-screen bg-slate-100 flex flex-col font-sans antialiased text-slate-900">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-5 right-5 z-60 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-2 border border-slate-700 animate-in fade-in slide-in-from-top-4 duration-300">
+        <div className="fixed top-5 right-5 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-2 border border-slate-700 animate-in fade-in slide-in-from-top-4 duration-300">
           <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
           <span className="text-sm font-medium">{toastMessage}</span>
         </div>
       )}
 
-      {/* Main Sidebar */}
-      <Sidebar
+      {/* Top Navbar */}
+      <Navbar
         currentTab={currentTab}
         onSelectTab={setCurrentTab}
         walletBalanceINR={wallet.availableINR}
         activeCampaignsCount={campaigns.filter((c) => c.status === 'SENDING').length}
+        onOpenQuickCampaign={() => handleOpenWhatsApp(null)}
       />
 
-      {/* Content Area */}
-      <main className="flex-1 p-8 max-w-7xl mx-auto overflow-y-auto">
+      {/* Main Content Area */}
+      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {currentTab === 'crm' && (
           <ContactsView
             contacts={contacts}
