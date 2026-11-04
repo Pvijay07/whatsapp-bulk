@@ -12,18 +12,20 @@ import {
   initialMessages,
   initialWallet,
   initialContacts,
+  initialAutoResponders,
 } from './store';
-import { Contact, VirtualNumber, Campaign, MessageLog, WalletData, MessageTemplate } from './types';
+import { Contact, VirtualNumber, Campaign, MessageLog, WalletData, MessageTemplate, AutoResponderRule } from './types';
 import { Navbar } from './components/Navbar';
 import { ContactsView } from './components/ContactsView';
 import { WhatsAppModal } from './components/WhatsAppModal';
 import { DeliveryReportsView } from './components/DeliveryReportsView';
 import { VirtualNumbersView } from './components/VirtualNumbersView';
 import { WalletView } from './components/WalletView';
-import { MessageSquare, CheckCircle2, Send, Sparkles } from 'lucide-react';
+import { AutoResponderView } from './components/AutoResponderView';
+import { MessageSquare, CheckCircle2, Send, Sparkles, Bot } from 'lucide-react';
 
 export const App: React.FC = () => {
-  const [currentTab, setCurrentTab] = useState<'crm' | 'campaigns' | 'reports' | 'numbers' | 'wallet'>('crm');
+  const [currentTab, setCurrentTab] = useState<'crm' | 'campaigns' | 'reports' | 'numbers' | 'autoresponder' | 'wallet'>('crm');
 
   // Dynamic application state
   const [contacts, setContacts] = useState<Contact[]>(() =>
@@ -40,6 +42,9 @@ export const App: React.FC = () => {
   );
   const [messages, setMessages] = useState<MessageLog[]>(() =>
     loadFromStorage('wa_saas_messages_v1', initialMessages),
+  );
+  const [autoResponders, setAutoResponders] = useState<AutoResponderRule[]>(() =>
+    loadFromStorage('wa_saas_autoresp_v1', initialAutoResponders),
   );
   const [wallet, setWallet] = useState<WalletData>(() =>
     loadFromStorage('wa_saas_wallet_v1', initialWallet),
@@ -79,6 +84,10 @@ export const App: React.FC = () => {
   useEffect(() => {
     saveToStorage('wa_saas_wallet_v1', wallet);
   }, [wallet]);
+
+  useEffect(() => {
+    saveToStorage('wa_saas_autoresp_v1', autoResponders);
+  }, [autoResponders]);
 
   // Initial check against backend
   useEffect(() => {
@@ -176,16 +185,22 @@ export const App: React.FC = () => {
   // 2. Triggered when client confirms "Send with Virtual Number"
   const handleSendCampaign = (data: {
     campaignName: string;
+    dispatchMode: 'OFFICIAL_CLOUD_API' | 'VIRTUAL_NUMBER_POOL';
     senderNumber: string;
+    senderPoolCount?: number;
     template: MessageTemplate;
     recipients: Contact[];
+    delayIntervalSec: number;
+    spintaxEnabled: boolean;
     totalCostINR: number;
   }) => {
     const newCampId = `camp-${Date.now()}`;
     const newCampaign: Campaign = {
       id: newCampId,
       name: data.campaignName,
+      dispatchMode: data.dispatchMode,
       senderNumber: data.senderNumber,
+      senderPoolCount: data.senderPoolCount || 1,
       templateName: data.template.name,
       status: 'SENDING',
       totalContacts: data.recipients.length,
@@ -193,21 +208,31 @@ export const App: React.FC = () => {
       deliveredCount: 0,
       readCount: 0,
       failedCount: 0,
+      delayIntervalSec: data.delayIntervalSec,
+      spintaxEnabled: data.spintaxEnabled,
       reservedINR: data.totalCostINR.toFixed(2),
       actualCostINR: data.totalCostINR.toFixed(2),
       createdAt: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
     };
 
-    // Create dynamic queued message records
-    const newMsgLogs: MessageLog[] = data.recipients.map((rec, idx) => ({
-      id: `msg-${Date.now()}-${idx}`,
-      campaignId: newCampId,
-      contactName: rec.name,
-      phoneNumber: rec.phoneNumber,
-      status: 'QUEUED',
-      providerMessageId: `wamid.HBgL${rec.phoneNumber.replace('+', '')}FQIAEhgU${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
-      costINR: '1.00',
-    }));
+    // Create dynamic queued message records with Round-Robin Virtual Number assignment!
+    const newMsgLogs: MessageLog[] = data.recipients.map((rec, idx) => {
+      // If pool mode, cycle through available numbers
+      const assignedNumber =
+        data.dispatchMode === 'VIRTUAL_NUMBER_POOL' && virtualNumbers.length > 0
+          ? virtualNumbers[idx % virtualNumbers.length].phoneNumber
+          : data.senderNumber;
+
+      return {
+        id: `msg-${Date.now()}-${idx}`,
+        campaignId: newCampId,
+        contactName: rec.name,
+        phoneNumber: rec.phoneNumber,
+        status: 'QUEUED',
+        providerMessageId: `wamid.HBgL${rec.phoneNumber.replace('+', '')}FQIAEhgU${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
+        costINR: '1.00',
+      };
+    });
 
     // Update state
     setCampaigns((prev) => [newCampaign, ...prev]);
@@ -307,6 +332,43 @@ export const App: React.FC = () => {
     showToast(`Wallet credited with ₹${amountINR.toLocaleString('en-IN')}!`);
   };
 
+  // Group Grabber
+  const handleGroupGrabberExtract = (extracted: Array<{ name: string; phoneNumber: string; tag: string }>) => {
+    const newEntries: Contact[] = extracted.map((item, idx) => ({
+      id: `c-grab-${Date.now()}-${idx}`,
+      name: item.name,
+      phoneNumber: item.phoneNumber,
+      tag: item.tag,
+      optInConsent: true,
+      isSuppressed: false,
+      createdAt: new Date().toISOString().split('T')[0],
+    }));
+    setContacts((prev) => [...newEntries, ...prev]);
+    showToast(`Group Grabber: Extracted ${extracted.length} WhatsApp numbers to CRM!`);
+  };
+
+  // Auto-responder rules
+  const handleToggleRule = (id: string) => {
+    setAutoResponders((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, isActive: !r.isActive } : r)),
+    );
+  };
+
+  const handleAddRule = (rule: Omit<AutoResponderRule, 'id' | 'triggerCount'>) => {
+    const newRule: AutoResponderRule = {
+      id: `ar-${Date.now()}`,
+      ...rule,
+      triggerCount: 0,
+    };
+    setAutoResponders((prev) => [newRule, ...prev]);
+    showToast(`Auto-reply rule for keyword "${rule.keyword}" activated!`);
+  };
+
+  const handleDeleteRule = (id: string) => {
+    setAutoResponders((prev) => prev.filter((r) => r.id !== id));
+    showToast('Auto-reply rule removed.');
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans antialiased text-slate-900">
       {/* Toast Notification */}
@@ -335,6 +397,7 @@ export const App: React.FC = () => {
             onOpenWhatsApp={handleOpenWhatsApp}
             onAddContact={handleAddContact}
             onImportCsv={handleImportCsv}
+            onGroupGrabberExtract={handleGroupGrabberExtract}
           />
         )}
 
@@ -412,6 +475,15 @@ export const App: React.FC = () => {
             numbers={virtualNumbers}
             onPurchaseNumber={handlePurchaseNumber}
             walletBalanceINR={wallet.availableINR}
+          />
+        )}
+
+        {currentTab === 'autoresponder' && (
+          <AutoResponderView
+            rules={autoResponders}
+            onToggleRule={handleToggleRule}
+            onAddRule={handleAddRule}
+            onDeleteRule={handleDeleteRule}
           />
         )}
 

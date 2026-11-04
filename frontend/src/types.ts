@@ -40,12 +40,24 @@ export interface MessageTemplate {
   header?: string;
   bodyText: string;
   buttons?: string[];
+  supportsSpintax?: boolean;
+}
+
+export interface AutoResponderRule {
+  id: string;
+  keyword: string;
+  matchType: 'EXACT' | 'CONTAINS';
+  replyText: string;
+  isActive: boolean;
+  triggerCount: number;
 }
 
 export interface Campaign {
   id: string;
   name: string;
+  dispatchMode: 'OFFICIAL_CLOUD_API' | 'VIRTUAL_NUMBER_POOL';
   senderNumber: string;
+  senderPoolCount?: number;
   templateName: string;
   status: 'DRAFT' | 'SENDING' | 'COMPLETED' | 'PAUSED';
   totalContacts: number;
@@ -53,6 +65,8 @@ export interface Campaign {
   deliveredCount: number;
   readCount: number;
   failedCount: number;
+  delayIntervalSec?: number;
+  spintaxEnabled?: boolean;
   reservedINR: string;
   actualCostINR: string;
   createdAt: string;

@@ -8,10 +8,11 @@ import {
   ShieldCheck,
   MessageSquare,
   Plus,
+  Bot,
 } from 'lucide-react';
 
 interface NavItem {
-  id: 'crm' | 'campaigns' | 'reports' | 'numbers' | 'wallet';
+  id: 'crm' | 'campaigns' | 'reports' | 'numbers' | 'autoresponder' | 'wallet';
   label: string;
   icon: any;
   badge?: string;
@@ -19,8 +20,8 @@ interface NavItem {
 }
 
 interface NavbarProps {
-  currentTab: 'crm' | 'campaigns' | 'reports' | 'numbers' | 'wallet';
-  onSelectTab: (tab: 'crm' | 'campaigns' | 'reports' | 'numbers' | 'wallet') => void;
+  currentTab: 'crm' | 'campaigns' | 'reports' | 'numbers' | 'autoresponder' | 'wallet';
+  onSelectTab: (tab: 'crm' | 'campaigns' | 'reports' | 'numbers' | 'autoresponder' | 'wallet') => void;
   walletBalanceINR: string;
   activeCampaignsCount: number;
   onOpenQuickCampaign: () => void;
@@ -57,6 +58,12 @@ export const Navbar: React.FC<NavbarProps> = ({
       id: 'numbers',
       label: 'Virtual Numbers (+91)',
       icon: PhoneCall,
+    },
+    {
+      id: 'autoresponder',
+      label: 'Auto-Reply Bots',
+      icon: Bot,
+      badge: 'Active',
     },
     {
       id: 'wallet',

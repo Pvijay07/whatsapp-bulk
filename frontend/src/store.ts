@@ -105,8 +105,9 @@ export const initialTemplates: MessageTemplate[] = [
     category: 'MARKETING',
     language: 'en_US',
     header: '✨ Diwali Festive Exclusive',
-    bodyText: 'Hello {{1}}! Celebrate this festive season with an exclusive 25% discount across all products. Use coupon code FESTIVE25 at checkout. Valid until midnight tomorrow.',
+    bodyText: '{Hello|Hi|Greetings} {{1}}! {Celebrate this festive season with|Enjoy} an exclusive 25% discount across all products. Use coupon code FESTIVE25 at checkout. Valid until midnight tomorrow.',
     buttons: ['Claim Discount', 'Opt Out'],
+    supportsSpintax: true,
   },
   {
     id: 'tmpl-2',
@@ -114,8 +115,9 @@ export const initialTemplates: MessageTemplate[] = [
     category: 'UTILITY',
     language: 'en_US',
     header: '📦 Order Out For Delivery',
-    bodyText: 'Hi {{1}}, your order #IND-9021 is out for delivery today via express courier. Please keep cash or UPI ready for receipt.',
+    bodyText: '{Hi|Dear} {{1}}, your order #IND-9021 is out for delivery today via express courier. {Please keep cash or UPI ready for receipt.|Delivery agent will contact you shortly.}',
     buttons: ['Track Order', 'Contact Support'],
+    supportsSpintax: true,
   },
   {
     id: 'tmpl-3',
@@ -128,11 +130,40 @@ export const initialTemplates: MessageTemplate[] = [
   },
 ];
 
+export const initialAutoResponders = [
+  {
+    id: 'ar-1',
+    keyword: 'PRICE',
+    matchType: 'CONTAINS' as const,
+    replyText: 'Hello! Our SaaS plans start from ₹499/mo including 1 dedicated Indian virtual number. Reply with DEMO to book a walk-through!',
+    isActive: true,
+    triggerCount: 42,
+  },
+  {
+    id: 'ar-2',
+    keyword: 'OFFER',
+    matchType: 'EXACT' as const,
+    replyText: 'Festive offer active! Use code FESTIVE25 for 25% extra credits on your next wallet recharge.',
+    isActive: true,
+    triggerCount: 19,
+  },
+  {
+    id: 'ar-3',
+    keyword: 'STOP',
+    matchType: 'EXACT' as const,
+    replyText: 'You have been successfully unsubscribed. You will not receive any further automated messages from this channel.',
+    isActive: true,
+    triggerCount: 8,
+  },
+];
+
 export const initialCampaigns: Campaign[] = [
   {
     id: 'camp-101',
     name: 'Festive Flash Sale - Wave 1',
-    senderNumber: '+91 80 4567 8901',
+    dispatchMode: 'VIRTUAL_NUMBER_POOL',
+    senderNumber: 'Multi-Number Pool (2 Numbers)',
+    senderPoolCount: 2,
     templateName: 'diwali_special_offer',
     status: 'COMPLETED',
     totalContacts: 4,
@@ -140,6 +171,8 @@ export const initialCampaigns: Campaign[] = [
     deliveredCount: 4,
     readCount: 3,
     failedCount: 0,
+    delayIntervalSec: 3,
+    spintaxEnabled: true,
     reservedINR: '4.00',
     actualCostINR: '4.00',
     createdAt: '2026-11-04 14:30',

@@ -20,6 +20,7 @@ interface ContactsViewProps {
   onOpenWhatsApp: (contact?: Contact | null) => void;
   onAddContact: (contact: Omit<Contact, 'id' | 'createdAt'>) => void;
   onImportCsv: (csvContent: string) => void;
+  onGroupGrabberExtract?: (extractedContacts: Array<{ name: string; phoneNumber: string; tag: string }>) => void;
 }
 
 export const ContactsView: React.FC<ContactsViewProps> = ({
@@ -27,10 +28,18 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
   onOpenWhatsApp,
   onAddContact,
   onImportCsv,
+  onGroupGrabberExtract,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showCsvModal, setShowCsvModal] = useState(false);
+  const [showGrabberModal, setShowGrabberModal] = useState(false);
+
+  // Group Grabber state
+  const [grabberRawText, setGrabberRawText] = useState(
+    `[12/10/26, 10:15] +91 98123 45678: Hello team\n[12/10/26, 10:18] +91 97234 56789: Interested in demo\n+91 99345 67890\n9845012345`,
+  );
+  const [grabberGroupName, setGrabberGroupName] = useState('Extracted Group Leads');
 
   // New Contact form states
   const [newName, setNewName] = useState('');
@@ -89,7 +98,17 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-2.5">
+          {/* Saasyto-inspired WhatsApp Group Grabber */}
+          <button
+            onClick={() => setShowGrabberModal(true)}
+            className="px-3 py-2 border border-emerald-300 bg-emerald-50/60 rounded-xl text-xs font-bold text-emerald-800 hover:bg-emerald-100 transition flex items-center gap-1.5 shadow-2xs"
+            title="Extract phone numbers from WhatsApp groups"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+            Group Grabber
+          </button>
+
           <button
             onClick={() => setShowCsvModal(true)}
             className="px-3.5 py-2 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50 transition flex items-center gap-1.5 shadow-2xs"
@@ -339,6 +358,84 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
               >
                 Start Streaming Import
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp Group Grabber Modal */}
+      {showGrabberModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4">
+            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-emerald-600" />
+              WhatsApp Group Grabber & Extractor
+            </h3>
+            <p className="text-xs text-slate-500">
+              Paste exported WhatsApp group chat text or raw phone number lists. The extractor will automatically isolate valid +91 numbers and import them into CRM.
+            </p>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Audience Group Tag
+              </label>
+              <input
+                type="text"
+                value={grabberGroupName}
+                onChange={(e) => setGrabberGroupName(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#128C7E] focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Raw Group Chat / Text Content
+              </label>
+              <textarea
+                rows={6}
+                value={grabberRawText}
+                onChange={(e) => setGrabberRawText(e.target.value)}
+                placeholder="Paste WhatsApp chat export or contact numbers here..."
+                className="w-full font-mono text-xs p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#128C7E] focus:outline-none"
+              />
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowGrabberModal(false)}
+                className="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  // Regex to match Indian phone numbers
+                  const matches = grabberRawText.match(/(?:\+91[\s-]?)?[6-9]\d{9}/g) || [];
+                  const uniquePhones = Array.from(
+                    new Set(matches.map((p) => {
+                      const clean = p.replace(/[^\d]/g, '');
+                      return clean.length === 10 ? `+91${clean}` : `+${clean}`;
+                    })),
+                  );
+
+                  if (uniquePhones.length > 0 && onGroupGrabberExtract) {
+                    onGroupGrabberExtract(
+                      uniquePhones.map((ph, idx) => ({
+                        name: `Member ${idx + 1}`,
+                        phoneNumber: ph,
+                        tag: grabberGroupName,
+                      })),
+                    );
+                  }
+                  setShowGrabberModal(false);
+                }}
+                className="px-4 py-2 bg-[#128C7E] hover:bg-[#075E54] text-white rounded-lg text-sm font-semibold flex items-center gap-1.5"
+              >
+                <Sparkles className="w-4 h-4" />
+                Extract & Add to CRM
               </button>
             </div>
           </div>

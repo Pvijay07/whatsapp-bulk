@@ -106,7 +106,7 @@ export const DeliveryReportsView: React.FC<DeliveryReportsViewProps> = ({
             <Send className="w-4 h-4" />
           </div>
           <div className="text-2xl font-bold text-indigo-950 mt-2">{totalSent}</div>
-          <div className="text-xs text-indigo-600 font-medium mt-1">Queued via BullMQ</div>
+          <div className="text-xs text-indigo-600 font-medium mt-1">Queued</div>
         </div>
 
         {/* Delivered */}
