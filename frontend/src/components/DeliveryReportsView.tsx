@@ -274,8 +274,12 @@ export const DeliveryReportsView: React.FC<DeliveryReportsViewProps> = ({
             <tbody className="divide-y divide-slate-100">
               {filteredMessages.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-sm text-slate-400">
-                    No campaign messages dispatched yet. Pair a WhatsApp account and launch a campaign to track real-time delivery reports.
+                  <td
+                    colSpan={6}
+                    className="px-6 py-12 text-center text-sm text-slate-400"
+                  >
+                    No campaign messages dispatched yet. Pair a WhatsApp account
+                    and launch a campaign to track real-time delivery reports.
                   </td>
                 </tr>
               ) : (

@@ -142,10 +142,11 @@ export class BaileysSessionService implements OnModuleInit {
    */
   async requestPairingCode(phoneNumber: string): Promise<string> {
     let clean = phoneNumber.replace(/[^\d]/g, '');
-    if (clean.length === 10) clean = `91${clean}`;
-
-    if (!this.sock) {
-      await this.initSocket();
+    if (clean.startsWith('0')) {
+      clean = clean.substring(1);
+    }
+    if (clean.length === 10) {
+      clean = `91${clean}`;
     }
 
     if (this.sessionState === 'ONLINE') {
@@ -153,9 +154,43 @@ export class BaileysSessionService implements OnModuleInit {
     }
 
     try {
-      this.logger.log(`Requesting 8-digit WhatsApp pairing code for number: ${clean}...`);
-      const code = await this.sock!.requestPairingCode(clean);
-      this.logger.log(`WhatsApp pairing code generated for ${clean}: ${code}`);
+      this.logger.log(`Preparing clean pairing handshake for number: ${clean}...`);
+
+      // 1. If not registered/online, reset uncompleted session state to avoid stale creds conflict
+      if (this.sock) {
+        try {
+          this.sock.end(undefined);
+        } catch (e) {}
+        this.sock = null;
+      }
+
+      const sessionDir = path.resolve(process.cwd(), 'sessions', 'active_device');
+      if (fs.existsSync(sessionDir)) {
+        fs.rmSync(sessionDir, { recursive: true, force: true });
+      }
+
+      // 2. Initialize fresh socket
+      await this.initSocket();
+
+      // 3. Wait until WebSocket is open and ready to accept IQ stanzas (max 10s)
+      const startTime = Date.now();
+      while (Date.now() - startTime < 10000) {
+        if (this.sock && (this.sock.ws as any)?.isOpen) {
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 300));
+      }
+
+      if (!this.sock || !(this.sock.ws as any)?.isOpen) {
+        throw new Error('Connection timed out waiting for WhatsApp servers. Please retry.');
+      }
+
+      // Ensure initial hello handshake completes
+      await new Promise((r) => setTimeout(r, 1000));
+
+      this.logger.log(`Requesting 8-digit WhatsApp pairing code for ${clean}...`);
+      const code = await this.sock.requestPairingCode(clean);
+      this.logger.log(`WhatsApp pairing code successfully generated for ${clean}: ${code}`);
       return code;
     } catch (err: any) {
       this.logger.error(`Failed to request pairing code for ${clean}: ${err.message}`);

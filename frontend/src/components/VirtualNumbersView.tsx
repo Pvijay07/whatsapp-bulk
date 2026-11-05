@@ -60,6 +60,7 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({
     otpCode?: string;
     costINR: number;
   } | null>(null);
+  const [provisionError, setProvisionError] = useState<string | null>(null);
 
   // Live Multi-Device Session State
   const [sessionStatus, setSessionStatus] = useState<{
@@ -167,22 +168,9 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({
         }
       } catch (e) {}
 
-      // Fallback response with live instruction
-      const randomSuffix = Math.floor(10000000 + Math.random() * 90000000);
-      const generatedPhone = `+9198${randomSuffix}`;
-      const mockResult = {
-        phoneNumber: generatedPhone,
-        orderId: `ORD-${Date.now().toString(36).toUpperCase()}`,
-        otpCode: `${Math.floor(100000 + Math.random() * 900000)}`,
-        costINR: 10.0,
-        proxyDisplay: 'Jio 4G Mobile Gateway (India)',
-      };
-
-      setProvisionResult(mockResult);
-      setProvisionStep(3);
-      if (onAutoProvisionNumber) {
-        onAutoProvisionNumber(mockResult);
-      }
+      // Zero mock data: if auto-provision endpoint is not configured, inform the user honestly
+      setProvisionError('SMS Gateway API key (5SIM / SMS-Activate) not configured on backend. Please link your existing number using the Pairing Code or QR tab above.');
+      setIsAutoProvisioning(false);
     }, 2000);
   };
 
