@@ -53,7 +53,12 @@ export class SessionController {
   @Post('send')
   @HttpCode(HttpStatus.OK)
   async sendDirectMessage(
-    @Body() body: { recipientPhoneNumber: string; messageText: string },
+    @Body()
+    body: {
+      recipientPhoneNumber: string;
+      messageText: string;
+      buttons?: Array<{ id?: string; type: string; text: string; value?: string }>;
+    },
   ) {
     if (!body.recipientPhoneNumber || !body.messageText) {
       throw new BadRequestException('recipientPhoneNumber and messageText are required');
@@ -69,6 +74,7 @@ export class SessionController {
     const result = await this.baileysService.sendRealMessage(
       body.recipientPhoneNumber,
       body.messageText,
+      body.buttons,
     );
 
     if (!result.success) {

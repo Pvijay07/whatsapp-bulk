@@ -19,6 +19,13 @@ export class BaileysSessionService implements OnModuleInit {
   private currentQrCodeDataUrl: string | null = null;
   private connectedPhoneNumber: string | null = null;
 
+  private getSessionDir(): string {
+    const baseDir = fs.existsSync(path.resolve(process.cwd(), 'backend'))
+      ? path.resolve(process.cwd(), 'backend')
+      : process.cwd();
+    return path.resolve(baseDir, 'sessions', 'active_device');
+  }
+
   async onModuleInit() {
     this.initSocket().catch((err) => {
       this.logger.warn(`Deferred Baileys socket initialization: ${err.message}`);
@@ -26,7 +33,7 @@ export class BaileysSessionService implements OnModuleInit {
   }
 
   async initSocket() {
-    const sessionDir = path.resolve(process.cwd(), 'sessions', 'active_device');
+    const sessionDir = this.getSessionDir();
     if (!fs.existsSync(sessionDir)) {
       fs.mkdirSync(sessionDir, { recursive: true });
     }
@@ -39,8 +46,9 @@ export class BaileysSessionService implements OnModuleInit {
       this.sock = makeWASocket({
         auth: state,
         printQRInTerminal: false,
-        browser: Browsers.macOS('Desktop'),
+        browser: Browsers.ubuntu('Chrome'),
         syncFullHistory: false,
+        markOnlineOnConnect: true,
         connectTimeoutMs: 60000,
         defaultQueryTimeoutMs: 60000,
         keepAliveIntervalMs: 25000,
@@ -103,18 +111,23 @@ export class BaileysSessionService implements OnModuleInit {
   }
 
   getSessionStatus() {
+    const isOnline = this.sessionState === 'ONLINE' && !!this.sock?.user;
     return {
       state: this.sessionState,
-      isOnline: this.sessionState === 'ONLINE',
-      qrCodeDataUrl: this.currentQrCodeDataUrl,
-      connectedNumber: this.connectedPhoneNumber,
+      isOnline,
+      qrCodeDataUrl: isOnline ? null : this.currentQrCodeDataUrl,
+      connectedNumber: isOnline ? this.connectedPhoneNumber : null,
     };
   }
 
   /**
    * Transmits an ACTUAL, REAL WhatsApp message directly over the live WebSocket protocol
    */
-  async sendRealMessage(toPhoneNumber: string, text: string): Promise<{ success: boolean; messageId: string; error?: string }> {
+  async sendRealMessage(
+    toPhoneNumber: string,
+    text: string,
+    buttons?: Array<{ id?: string; type: string; text: string; value?: string }>,
+  ): Promise<{ success: boolean; messageId: string; error?: string }> {
     if (this.sessionState !== 'ONLINE' || !this.sock) {
       return {
         success: false,
@@ -131,8 +144,23 @@ export class BaileysSessionService implements OnModuleInit {
       }
       const jid = `${clean}@s.whatsapp.net`;
 
+      // Format interactive button CTAs if present
+      let finalText = text;
+      if (buttons && buttons.length > 0) {
+        const buttonLines = buttons.map((b) => {
+          if (b.type === 'URL') {
+            return `🔗 ${b.text}: ${b.value || 'https://'}`;
+          } else if (b.type === 'PHONE') {
+            return `📞 ${b.text}: ${b.value || ''}`;
+          } else {
+            return `👉 ${b.text}`;
+          }
+        });
+        finalText = `${text}\n\n${buttonLines.join('\n')}`;
+      }
+
       this.logger.log(`Transmitting real WhatsApp message to ${jid} over WebSocket...`);
-      const sent = await this.sock.sendMessage(jid, { text });
+      const sent = await this.sock.sendMessage(jid, { text: finalText });
 
       const realMsgId = sent?.key?.id || `VMSG-${clean}-${Date.now().toString(36)}`;
       this.logger.log(`✅ Message delivered to WhatsApp servers! Key ID: ${realMsgId}`);
@@ -168,7 +196,7 @@ export class BaileysSessionService implements OnModuleInit {
         this.sock = null;
       }
 
-      const sessionDir = path.resolve(process.cwd(), 'sessions', 'active_device');
+      const sessionDir = this.getSessionDir();
       if (fs.existsSync(sessionDir)) {
         fs.rmSync(sessionDir, { recursive: true, force: true });
       }
@@ -225,7 +253,7 @@ export class BaileysSessionService implements OnModuleInit {
         this.sock = null;
       }
 
-      const sessionDir = path.resolve(process.cwd(), 'sessions', 'active_device');
+      const sessionDir = this.getSessionDir();
       if (fs.existsSync(sessionDir)) {
         fs.rmSync(sessionDir, { recursive: true, force: true });
       }
@@ -264,7 +292,7 @@ export class BaileysSessionService implements OnModuleInit {
       if (this.sock) {
         await this.sock.logout();
       }
-      const sessionDir = path.resolve(process.cwd(), 'sessions', 'active_device');
+      const sessionDir = this.getSessionDir();
       if (fs.existsSync(sessionDir)) {
         fs.rmSync(sessionDir, { recursive: true, force: true });
       }

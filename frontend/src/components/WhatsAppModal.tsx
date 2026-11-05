@@ -16,7 +16,19 @@ import {
   Shuffle,
   FileText,
   Smartphone,
+  ExternalLink,
+  CornerDownLeft,
+  Plus,
+  Trash2,
+  Key,
 } from 'lucide-react';
+
+export interface CampaignActionButton {
+  id: string;
+  type: 'QUICK_REPLY' | 'URL' | 'PHONE';
+  text: string;
+  value?: string;
+}
 
 interface WhatsAppModalProps {
   isOpen: boolean;
@@ -27,12 +39,14 @@ interface WhatsAppModalProps {
   whatsAppAccounts: WhatsAppAccount[];
   templates: MessageTemplate[];
   walletAvailableINR: string;
+  onOpenLinkDevice?: () => void;
   onSendCampaign: (data: {
     campaignName: string;
     dispatchType: 'MULTI_NUMBER_POOL' | 'DEDICATED_NUMBER';
     senderNumber: string;
     senderPoolCount?: number;
     customMessageText: string;
+    buttons?: CampaignActionButton[];
     recipients: Contact[];
     delayIntervalSec: number;
     spintaxEnabled: boolean;
@@ -48,6 +62,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
   virtualNumbers,
   templates,
   walletAvailableINR,
+  onOpenLinkDevice,
   onSendCampaign,
 }) => {
   if (!isOpen) return null;
@@ -108,6 +123,33 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
     templates[0]?.bodyText || '{Hello|Hi|Greetings} {{1}}! We have an exclusive festive offer for you today. Reply with YES to receive your coupon code!',
   );
 
+  // Interactive CTA & Quick Reply Buttons
+  const [buttonsEnabled, setButtonsEnabled] = useState(true);
+  const [campaignButtons, setCampaignButtons] = useState<CampaignActionButton[]>([
+    { id: 'btn-1', type: 'QUICK_REPLY', text: '🎁 Claim 25% Off' },
+    { id: 'btn-2', type: 'URL', text: '🌐 Visit Website', value: 'https://example.com' },
+    { id: 'btn-3', type: 'PHONE', text: '📞 Call Support', value: '+919876543210' },
+  ]);
+
+  const handleAddButton = () => {
+    if (campaignButtons.length >= 3) return;
+    const newId = `btn-${Date.now()}`;
+    setCampaignButtons((prev) => [
+      ...prev,
+      { id: newId, type: 'QUICK_REPLY', text: `Button ${prev.length + 1}` },
+    ]);
+  };
+
+  const handleRemoveButton = (id: string) => {
+    setCampaignButtons((prev) => prev.filter((b) => b.id !== id));
+  };
+
+  const handleUpdateButton = (id: string, updates: Partial<CampaignActionButton>) => {
+    setCampaignButtons((prev) =>
+      prev.map((b) => (b.id === id ? { ...b, ...updates } : b)),
+    );
+  };
+
   // Anti-Ban & Humanized Controls
   const [delayIntervalSec, setDelayIntervalSec] = useState(3);
   const [spintaxEnabled, setSpintaxEnabled] = useState(true);
@@ -136,9 +178,12 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
         senderNumber:
           dispatchType === 'MULTI_NUMBER_POOL'
             ? `Virtual Pool (${virtualNumbers.length} Numbers)`
+            : sessionStatus.isOnline && sessionStatus.connectedNumber
+            ? sessionStatus.connectedNumber
             : selectedNumber?.phoneNumber || 'Linked WhatsApp Account',
         senderPoolCount: dispatchType === 'MULTI_NUMBER_POOL' ? virtualNumbers.length : 1,
         customMessageText: messageText,
+        buttons: buttonsEnabled ? campaignButtons : [],
         recipients: eligibleRecipients,
         delayIntervalSec,
         spintaxEnabled,
@@ -226,15 +271,30 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
                   </div>
                 </div>
               </div>
-              <span
-                className={`px-2.5 py-1 rounded-full text-[10px] font-bold shrink-0 ${
-                  sessionStatus.isOnline
-                    ? 'bg-emerald-200 text-emerald-900 border border-emerald-300'
-                    : 'bg-amber-200 text-amber-900 border border-amber-300'
-                }`}
-              >
-                {sessionStatus.isOnline ? 'ONLINE' : 'NOT LINKED'}
-              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                {!sessionStatus.isOnline && onOpenLinkDevice && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenLinkDevice();
+                    }}
+                    className="px-3 py-1.5 bg-[#128C7E] hover:bg-[#075E54] text-white text-xs font-bold rounded-lg shadow-xs flex items-center gap-1.5 active:scale-95"
+                  >
+                    <Key className="w-3.5 h-3.5" />
+                    Link Phone Now
+                  </button>
+                )}
+                <span
+                  className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                    sessionStatus.isOnline
+                      ? 'bg-emerald-200 text-emerald-900 border border-emerald-300'
+                      : 'bg-amber-200 text-amber-900 border border-amber-300'
+                  }`}
+                >
+                  {sessionStatus.isOnline ? 'ONLINE' : 'NOT LINKED'}
+                </span>
+              </div>
             </div>
 
             {/* Sender Mode: Pool or Dedicated */}
@@ -397,6 +457,108 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
               />
             </div>
 
+            {/* Interactive Action Buttons (CTA & Quick Reply) */}
+            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                    Interactive Buttons in Campaign (CTA & Quick Reply)
+                  </div>
+                  <div className="text-[11px] text-slate-500">
+                    Add up to 3 interactive tap buttons to your broadcast message.
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={buttonsEnabled}
+                    onChange={(e) => setButtonsEnabled(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#128C7E]"></div>
+                </label>
+              </div>
+
+              {buttonsEnabled && (
+                <div className="space-y-2 pt-1 border-t border-slate-200/80">
+                  {campaignButtons.map((btn, index) => (
+                    <div
+                      key={btn.id}
+                      className="p-2.5 bg-white border border-slate-200 rounded-xl space-y-2 shadow-2xs"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 w-5 h-5 rounded-full flex items-center justify-center shrink-0">
+                          {index + 1}
+                        </span>
+
+                        <select
+                          value={btn.type}
+                          onChange={(e) =>
+                            handleUpdateButton(btn.id, {
+                              type: e.target.value as any,
+                              value:
+                                e.target.value === 'URL'
+                                  ? 'https://example.com'
+                                  : e.target.value === 'PHONE'
+                                  ? '+919876543210'
+                                  : '',
+                            })
+                          }
+                          className="px-2 py-1 text-xs border border-slate-300 rounded-lg bg-white shrink-0 focus:ring-1 focus:ring-emerald-500 font-medium"
+                        >
+                          <option value="QUICK_REPLY">👉 Quick Reply</option>
+                          <option value="URL">🔗 Visit Website (URL)</option>
+                          <option value="PHONE">📞 Call Phone</option>
+                        </select>
+
+                        <input
+                          type="text"
+                          value={btn.text}
+                          onChange={(e) => handleUpdateButton(btn.id, { text: e.target.value })}
+                          placeholder="Button Label (e.g. Claim Offer)"
+                          className="flex-1 px-2.5 py-1 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 font-medium"
+                          maxLength={30}
+                        />
+
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveButton(btn.id)}
+                          className="text-slate-400 hover:text-rose-600 p-1"
+                          title="Remove Button"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {btn.type !== 'QUICK_REPLY' && (
+                        <div className="pl-7">
+                          <input
+                            type="text"
+                            value={btn.value || ''}
+                            onChange={(e) => handleUpdateButton(btn.id, { value: e.target.value })}
+                            placeholder={btn.type === 'URL' ? 'https://yourwebsite.com' : '+91 98765 43210'}
+                            className="w-full px-2.5 py-1 text-[11px] font-mono border border-slate-200 rounded-lg bg-slate-50 focus:bg-white focus:ring-1 focus:ring-emerald-500"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {campaignButtons.length < 3 && (
+                    <button
+                      type="button"
+                      onClick={handleAddButton}
+                      className="w-full py-1.5 border border-dashed border-emerald-400 text-[#128C7E] hover:bg-emerald-50 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Add Action Button ({campaignButtons.length}/3)
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Anti-Ban Safeguards: Spintax & Sleep Delay Slider */}
             <div className="p-3 bg-amber-50/60 border border-amber-200/80 rounded-xl space-y-2.5">
               <div className="flex items-center justify-between">
@@ -500,13 +662,30 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
 
               {/* Chat Bubble Area */}
               <div className="space-y-2 my-auto">
-                <div className="bg-white rounded-lg rounded-tl-none p-3 shadow-sm border border-slate-200/60 max-w-[95%] space-y-1.5">
+                <div className="bg-white rounded-lg rounded-tl-none p-3 shadow-sm border border-slate-200/60 max-w-[95%] space-y-1.5 overflow-hidden">
                   <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
                     {renderedBody}
                   </p>
                   <div className="text-[10px] text-right text-slate-400">
                     Just now &bull; {spintaxEnabled ? 'Spintax Dynamic' : 'Direct'}
                   </div>
+
+                  {/* Interactive Buttons Preview inside Chat Bubble */}
+                  {buttonsEnabled && campaignButtons.length > 0 && (
+                    <div className="border-t border-slate-100 divide-y divide-slate-100 -mx-3 -mb-3 mt-2 bg-slate-50/70">
+                      {campaignButtons.map((btn) => (
+                        <div
+                          key={btn.id}
+                          className="py-2 px-3 text-center text-xs font-semibold text-[#128C7E] flex items-center justify-center gap-1.5 hover:bg-emerald-50/80 transition"
+                        >
+                          {btn.type === 'URL' && <ExternalLink className="w-3.5 h-3.5 text-[#128C7E]" />}
+                          {btn.type === 'PHONE' && <PhoneCall className="w-3.5 h-3.5 text-[#128C7E]" />}
+                          {btn.type === 'QUICK_REPLY' && <CornerDownLeft className="w-3.5 h-3.5 text-[#128C7E]" />}
+                          <span className="truncate">{btn.text || 'Action Button'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 

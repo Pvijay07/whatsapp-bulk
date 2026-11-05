@@ -350,7 +350,11 @@ export class DynamicStoreManager {
   }
 
   // Transmit REAL WhatsApp message directly via backend Baileys WebSocket (no simulation)
-  async sendRealMessage(recipientPhoneNumber: string, messageText: string): Promise<{
+  async sendRealMessage(
+    recipientPhoneNumber: string,
+    messageText: string,
+    buttons?: any[],
+  ): Promise<{
     success: boolean;
     messageId: string;
     error?: string;
@@ -359,6 +363,7 @@ export class DynamicStoreManager {
       const res = await apiClient.post('/session/send', {
         recipientPhoneNumber,
         messageText,
+        buttons,
       });
       return res.data;
     } catch (err: any) {

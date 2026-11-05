@@ -164,6 +164,7 @@ export const App: React.FC = () => {
     senderNumber: string;
     senderPoolCount?: number;
     customMessageText: string;
+    buttons?: any[];
     recipients: Contact[];
     delayIntervalSec: number;
     spintaxEnabled: boolean;
@@ -230,7 +231,7 @@ export const App: React.FC = () => {
       }
 
       // REAL TRANSMISSION TO WHATSAPP NOISE PROTOCOL
-      const res = await dynamicStore.sendRealMessage(rec.phoneNumber, text);
+      const res = await dynamicStore.sendRealMessage(rec.phoneNumber, text, data.buttons);
       const now = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
       if (res.success) {
@@ -626,6 +627,7 @@ export const App: React.FC = () => {
         whatsAppAccounts={initialWhatsAppAccounts}
         templates={templates}
         walletAvailableINR={wallet.availableINR}
+        onOpenLinkDevice={() => setCurrentTab('numbers')}
         onSendCampaign={handleSendCampaign}
       />
     </div>
