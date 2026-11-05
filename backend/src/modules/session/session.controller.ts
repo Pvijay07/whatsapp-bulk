@@ -47,7 +47,7 @@ export class SessionController {
   }
 
   /**
-   * Transmits a real WhatsApp message over the live Baileys WebSocket protocol.
+   * Transmits a  message over the live Baileys WebSocket protocol.
    * Throws an authentic error if device is not linked (NO mock data / NO simulated delivery).
    */
   @Post('send')
@@ -56,12 +56,19 @@ export class SessionController {
     @Body()
     body: {
       recipientPhoneNumber: string;
-      messageText: string;
+      messageText?: string;
       buttons?: Array<{ id?: string; type: string; text: string; value?: string }>;
+      media?: {
+        base64?: string;
+        url?: string;
+        mimeType: string;
+        fileName: string;
+        fileSize?: number;
+      };
     },
   ) {
-    if (!body.recipientPhoneNumber || !body.messageText) {
-      throw new BadRequestException('recipientPhoneNumber and messageText are required');
+    if (!body.recipientPhoneNumber || (!body.messageText && !body.media)) {
+      throw new BadRequestException('recipientPhoneNumber and either messageText or media are required');
     }
 
     const session = this.baileysService.getSessionStatus();
@@ -73,8 +80,9 @@ export class SessionController {
 
     const result = await this.baileysService.sendRealMessage(
       body.recipientPhoneNumber,
-      body.messageText,
+      body.messageText || '',
       body.buttons,
+      body.media,
     );
 
     if (!result.success) {

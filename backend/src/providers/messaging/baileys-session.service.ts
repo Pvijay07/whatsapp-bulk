@@ -251,12 +251,23 @@ export class BaileysSessionService implements OnModuleInit {
   }
 
   /**
-   * Transmits an ACTUAL, REAL WhatsApp message directly over the live WebSocket protocol
+   * Transmits an ACTUAL,  message directly over the live WebSocket protocol
+   */
+  /**
+   * Transmits a real WhatsApp message over the live Baileys WebSocket protocol.
+   * Supports rich text, Click-to-Chat deep link buttons, and media attachments (images, PDFs, documents, video, audio).
    */
   async sendRealMessage(
     toPhoneNumber: string,
     text: string,
     buttons?: Array<{ id?: string; type: string; text: string; value?: string }>,
+    media?: {
+      base64?: string;
+      url?: string;
+      mimeType: string;
+      fileName: string;
+      fileSize?: number;
+    },
   ): Promise<{ success: boolean; messageId: string; error?: string }> {
     // If briefly reconnecting, wait up to 4 seconds for online state
     if (this.sessionState !== 'ONLINE') {
@@ -286,7 +297,7 @@ export class BaileysSessionService implements OnModuleInit {
       const jid = `${clean}@s.whatsapp.net`;
 
       // Format Action Buttons into authentic WhatsApp Click-to-Chat Deep Links (wa.me) & Rich Cards
-      let finalText = text;
+      let finalText = text || '';
       if (buttons && buttons.length > 0) {
         const senderClean = (
           this.connectedPhoneNumber ||
@@ -312,11 +323,60 @@ export class BaileysSessionService implements OnModuleInit {
           }
         });
 
-        finalText = `${text}\n\n━━━━━━━━━━━━━━━━━━━━\n${actionLines.join('\n\n')}\n━━━━━━━━━━━━━━━━━━━━`;
+        finalText = finalText
+          ? `${finalText}\n\n━━━━━━━━━━━━━━━━━━━━\n${actionLines.join('\n\n')}\n━━━━━━━━━━━━━━━━━━━━`
+          : `━━━━━━━━━━━━━━━━━━━━\n${actionLines.join('\n\n')}\n━━━━━━━━━━━━━━━━━━━━`;
       }
 
-      this.logger.log(`Transmitting real WhatsApp broadcast to ${jid} over WebSocket...`);
-      const sent = await this.sock.sendMessage(jid, { text: finalText });
+      let sent: any;
+
+      if (media && (media.base64 || media.url)) {
+        let mediaBuffer: Buffer | null = null;
+        if (media.base64) {
+          const cleanB64 = media.base64.replace(/^data:[^;]+;base64,/, '');
+          mediaBuffer = Buffer.from(cleanB64, 'base64');
+        }
+        const mediaSource = mediaBuffer || { url: media.url };
+        const mime = (media.mimeType || 'application/octet-stream').toLowerCase();
+        const fileName = media.fileName || 'attachment';
+
+        if (mime.startsWith('image/')) {
+          this.logger.log(`Transmitting real WhatsApp image broadcast (${fileName}) to ${jid}...`);
+          sent = await this.sock.sendMessage(jid, {
+            image: mediaSource,
+            caption: finalText || undefined,
+          });
+        } else if (mime.startsWith('video/')) {
+          this.logger.log(`Transmitting real WhatsApp video broadcast (${fileName}) to ${jid}...`);
+          sent = await this.sock.sendMessage(jid, {
+            video: mediaSource,
+            caption: finalText || undefined,
+            mimetype: mime,
+          });
+        } else if (mime.startsWith('audio/')) {
+          this.logger.log(`Transmitting real WhatsApp audio broadcast (${fileName}) to ${jid}...`);
+          sent = await this.sock.sendMessage(jid, {
+            audio: mediaSource,
+            mimetype: mime,
+            ptt: false,
+          });
+          if (finalText && finalText.trim()) {
+            await this.sock.sendMessage(jid, { text: finalText });
+          }
+        } else {
+          // Document / PDF / Sheets / Text / Any file
+          this.logger.log(`Transmitting real WhatsApp document broadcast (${fileName}, ${mime}) to ${jid}...`);
+          sent = await this.sock.sendMessage(jid, {
+            document: mediaSource,
+            mimetype: mime,
+            fileName: fileName,
+            caption: finalText || undefined,
+          });
+        }
+      } else {
+        this.logger.log(`Transmitting real WhatsApp broadcast to ${jid} over WebSocket...`);
+        sent = await this.sock.sendMessage(jid, { text: finalText });
+      }
 
       const realMsgId = sent?.key?.id || `VMSG-${clean}-${Date.now().toString(36)}`;
       this.logger.log(`✅ Message delivered to WhatsApp servers! Key ID: ${realMsgId}`);
@@ -341,7 +401,7 @@ export class BaileysSessionService implements OnModuleInit {
    */
   async generateFreshQr(): Promise<{ success: boolean; qrCodeDataUrl: string | null; error?: string }> {
     if (this.sessionState === 'ONLINE' || this.isSessionRegistered()) {
-      const num = this.connectedPhoneNumber || this.getSavedRegisteredNumber() || 'Physical Handset';
+      const num = this.connectedPhoneNumber || this.getSavedRegisteredNumber() || '';
       return {
         success: false,
         qrCodeDataUrl: null,
@@ -350,7 +410,7 @@ export class BaileysSessionService implements OnModuleInit {
     }
 
     try {
-      this.logger.log('Generating fresh real WhatsApp QR code...');
+      this.logger.log('Generating fresh  QR code...');
       this.cleanUpSocket();
 
       const sessionDir = this.getSessionDir();

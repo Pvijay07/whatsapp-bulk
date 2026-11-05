@@ -167,7 +167,7 @@ export const App: React.FC = () => {
   };
 
   // 2. Triggered when client confirms "Send with Virtual Number"
-  // TRANSMITS REAL WHATSAPP MESSAGES OVER LIVE BAILEYS WEBSOCKET (ZERO SIMULATION)
+  // TRANSMITS  MESSAGES OVER LIVE BAILEYS WEBSOCKET (ZERO SIMULATION)
   const handleSendCampaign = async (data: {
     campaignName: string;
     dispatchType: 'MULTI_NUMBER_POOL' | 'DEDICATED_NUMBER';
@@ -175,6 +175,13 @@ export const App: React.FC = () => {
     senderPoolCount?: number;
     customMessageText: string;
     buttons?: any[];
+    media?: {
+      base64?: string;
+      url?: string;
+      mimeType: string;
+      fileName: string;
+      fileSize?: number;
+    } | null;
     recipients: Contact[];
     delayIntervalSec: number;
     spintaxEnabled: boolean;
@@ -241,7 +248,7 @@ export const App: React.FC = () => {
       }
 
       // REAL TRANSMISSION TO WHATSAPP NOISE PROTOCOL
-      const res = await dynamicStore.sendRealMessage(rec.phoneNumber, text, data.buttons);
+      const res = await dynamicStore.sendRealMessage(rec.phoneNumber, text, data.buttons, data.media);
       const now = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
       if (res.success) {

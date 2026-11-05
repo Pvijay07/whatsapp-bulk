@@ -354,6 +354,13 @@ export class DynamicStoreManager {
     recipientPhoneNumber: string,
     messageText: string,
     buttons?: any[],
+    media?: {
+      base64?: string;
+      url?: string;
+      mimeType: string;
+      fileName: string;
+      fileSize?: number;
+    } | null,
   ): Promise<{
     success: boolean;
     messageId: string;
@@ -364,6 +371,7 @@ export class DynamicStoreManager {
         recipientPhoneNumber,
         messageText,
         buttons,
+        media: media || undefined,
       });
       return res.data;
     } catch (err: any) {

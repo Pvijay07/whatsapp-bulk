@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { Contact, VirtualNumber, MessageTemplate, WhatsAppAccount } from '../types';
 import {
@@ -21,6 +21,12 @@ import {
   Plus,
   Trash2,
   Key,
+  Paperclip,
+  Image as ImageIcon,
+  UploadCloud,
+  Download,
+  Video,
+  Music,
 } from 'lucide-react';
 
 export interface CampaignActionButton {
@@ -28,6 +34,15 @@ export interface CampaignActionButton {
   type: 'QUICK_REPLY' | 'URL' | 'PHONE';
   text: string;
   value?: string;
+}
+
+export interface MediaAttachment {
+  file?: File;
+  base64?: string;
+  url?: string;
+  mimeType: string;
+  fileName: string;
+  fileSize?: number;
 }
 
 interface WhatsAppModalProps {
@@ -47,6 +62,7 @@ interface WhatsAppModalProps {
     senderPoolCount?: number;
     customMessageText: string;
     buttons?: CampaignActionButton[];
+    media?: MediaAttachment | null;
     recipients: Contact[];
     delayIntervalSec: number;
     spintaxEnabled: boolean;
@@ -131,6 +147,80 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
     { id: 'btn-3', type: 'PHONE', text: '📞 Call Support', value: '+919876543210' },
   ]);
 
+  // Media Attachment (Images, Documents / PDFs, Videos, Audio)
+  const [attachment, setAttachment] = useState<MediaAttachment | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setAttachment({
+        file,
+        base64: reader.result as string,
+        mimeType: file.type || 'application/octet-stream',
+        fileName: file.name,
+        fileSize: file.size,
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveAttachment = () => {
+    setAttachment(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // 1-Click preset demo graphic generator for quick testing
+  const handleSetSampleImage = () => {
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = 600;
+      canvas.height = 340;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // WhatsApp emerald gradient background
+        const grad = ctx.createLinearGradient(0, 0, 600, 340);
+        grad.addColorStop(0, '#075E54');
+        grad.addColorStop(0.5, '#128C7E');
+        grad.addColorStop(1, '#25D366');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 600, 340);
+
+        // Card container
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.roundRect ? ctx.roundRect(30, 30, 540, 280, 20) : ctx.fillRect(30, 30, 540, 280);
+        ctx.fill();
+
+        // Texts
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 34px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('SPECIAL 25% DISCOUNT', 300, 140);
+
+        ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.fillStyle = '#FFE600';
+        ctx.fillText('🎁 FESTIVE MEGA SALE • LIMITED PERIOD', 300, 185);
+
+        ctx.font = '16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.fillStyle = '#E8F5E9';
+        ctx.fillText('Instant Delivery • Verified Virtual Broadcast', 300, 235);
+
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        setAttachment({
+          base64: dataUrl,
+          mimeType: 'image/jpeg',
+          fileName: 'Festive-Offer-Banner.jpg',
+          fileSize: 42000,
+        });
+      }
+    } catch (e) {
+      console.warn('Canvas generator fallback', e);
+    }
+  };
+
   const handleAddButton = () => {
     if (campaignButtons.length >= 3) return;
     const newId = `btn-${Date.now()}`;
@@ -184,6 +274,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
         senderPoolCount: dispatchType === 'MULTI_NUMBER_POOL' ? virtualNumbers.length : 1,
         customMessageText: messageText,
         buttons: buttonsEnabled ? campaignButtons : [],
+        media: attachment,
         recipients: eligibleRecipients,
         delayIntervalSec,
         spintaxEnabled,
@@ -261,7 +352,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
             {/* Left Column: Configuration Controls (7 cols) */}
             <div className="md:col-span-7 space-y-4">
-            {/* Real WhatsApp Companion Status Banner */}
+            {/*  Companion Status Banner */}
             <div
               className={`p-3.5 rounded-xl border flex items-center justify-between text-xs ${
                 sessionStatus.isOnline
@@ -295,7 +386,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
                       ? 'Real Multi-Device WebSocket active. Messages transmit physically to recipient handsets!'
                       : sessionStatus.connectedNumber
                       ? 'Physical WhatsApp handset authenticated and ready to broadcast real messages.'
-                      : 'To send real WhatsApp messages, link your phone in the "Indian Virtual Numbers (+91)" tab.'}
+                      : 'To send  messages, link your phone in the "Indian Virtual Numbers (+91)" tab.'}
                   </div>
                 </div>
               </div>
@@ -436,7 +527,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
                 >
                   {(sessionStatus.connectedNumber || virtualNumbers.some((n) => n.id === 'real-linked-session')) && (
                     <option value="real-linked-session">
-                      🟢 {sessionStatus.connectedNumber || virtualNumbers.find((n) => n.id === 'real-linked-session')?.phoneNumber} • Connected Real WhatsApp (Physical Handset)
+                      🟢 {sessionStatus.connectedNumber || virtualNumbers.find((n) => n.id === 'real-linked-session')?.phoneNumber} • Connected  ()
                     </option>
                   )}
                   {virtualNumbers
@@ -467,6 +558,120 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
                 </div>
               </div>
             )}
+
+            {/* Media & Document Attachment */}
+            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Paperclip className="w-3.5 h-3.5 text-emerald-600" />
+                    Media & Document Attachment (Optional)
+                  </div>
+                  <div className="text-[11px] text-slate-500">
+                    Attach images, PDF brochures, product catalogs, videos, or audio.
+                  </div>
+                </div>
+                {attachment && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveAttachment}
+                    className="text-[11px] text-rose-600 hover:text-rose-700 font-semibold flex items-center gap-1 hover:underline"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    Remove
+                  </button>
+                )}
+              </div>
+
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileSelect}
+                accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.csv,video/*,audio/*"
+                className="hidden"
+              />
+
+              {!attachment ? (
+                <div className="space-y-2">
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-xl p-3.5 text-center cursor-pointer transition bg-white hover:bg-emerald-50/30 group"
+                  >
+                    <UploadCloud className="w-7 h-7 text-slate-400 group-hover:text-[#128C7E] mx-auto mb-1 transition" />
+                    <div className="text-xs font-semibold text-slate-700 group-hover:text-[#128C7E]">
+                      Click to attach Image, PDF Catalog, Video or Audio
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      Supports JPG, PNG, PDF, MP4, MP3, DOCX up to 25 MB
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-slate-400 font-medium">Quick Preset:</span>
+                    <button
+                      type="button"
+                      onClick={handleSetSampleImage}
+                      className="text-[10px] bg-slate-200/80 hover:bg-emerald-100 hover:text-emerald-900 text-slate-700 px-2 py-0.5 rounded font-medium transition flex items-center gap-1"
+                    >
+                      <ImageIcon className="w-3 h-3 text-emerald-600" />
+                      + Sample Promo Banner (JPG)
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-2.5 bg-white border border-emerald-300 rounded-xl flex items-center justify-between shadow-2xs">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    {attachment.mimeType.startsWith('image/') ? (
+                      <div className="w-12 h-12 rounded-lg overflow-hidden bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center">
+                        <img
+                          src={attachment.base64 || attachment.url}
+                          alt="Preview"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ) : attachment.mimeType.includes('pdf') ? (
+                      <div className="w-12 h-12 rounded-lg bg-rose-50 border border-rose-200 text-rose-600 flex flex-col items-center justify-center shrink-0">
+                        <FileText className="w-5 h-5" />
+                        <span className="text-[8px] font-bold uppercase">PDF</span>
+                      </div>
+                    ) : attachment.mimeType.startsWith('video/') ? (
+                      <div className="w-12 h-12 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-600 flex flex-col items-center justify-center shrink-0">
+                        <Video className="w-5 h-5" />
+                        <span className="text-[8px] font-bold uppercase">VID</span>
+                      </div>
+                    ) : (
+                      <div className="w-12 h-12 rounded-lg bg-amber-50 border border-amber-200 text-amber-600 flex flex-col items-center justify-center shrink-0">
+                        <FileText className="w-5 h-5" />
+                        <span className="text-[8px] font-bold uppercase">FILE</span>
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-slate-800 truncate max-w-[240px]" title={attachment.fileName}>
+                        {attachment.fileName}
+                      </div>
+                      <div className="text-[10px] text-slate-500 flex items-center gap-2 mt-0.5">
+                        <span className="bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded font-semibold text-[9px] uppercase">
+                          {attachment.mimeType.split('/')[1] || 'MEDIA'}
+                        </span>
+                        {attachment.fileSize && (
+                          <span>{(attachment.fileSize / 1024).toFixed(1)} KB</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="text-[11px] text-[#128C7E] hover:underline font-semibold"
+                    >
+                      Change
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Direct Message Composer (Free text + Spintax) */}
             <div>
@@ -684,7 +889,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
                       <CheckCircle2 className="w-3 h-3 text-[#25D366] fill-[#25D366]" />
                     </div>
                     <div className="text-[10px] text-emerald-100">
-                      {sessionStatus.isOnline ? '🟢 Real WhatsApp Companion Online' : 'Virtual Number Gateway'}
+                      {sessionStatus.isOnline ? '🟢  Companion Online' : 'Virtual Number Gateway'}
                     </div>
                   </div>
                 </div>
@@ -692,31 +897,90 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
 
               {/* Chat Bubble Area */}
               <div className="space-y-2 my-auto">
-                <div className="bg-white rounded-lg rounded-tl-none p-3 shadow-sm border border-slate-200/60 max-w-[95%] space-y-1.5 overflow-hidden">
-                  <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
-                    {renderedBody}
-                  </p>
-                  <div className="text-[10px] text-right text-slate-400">
-                    Just now &bull; {spintaxEnabled ? 'Spintax Dynamic' : 'Direct'}
-                  </div>
-                </div>
+                <div className="bg-white rounded-lg rounded-tl-none shadow-sm border border-slate-200/60 max-w-[95%] overflow-hidden">
+                  {/* Media Attachment inside Chat Bubble */}
+                  {attachment && (
+                    <div className="bg-slate-100 border-b border-slate-200/80 overflow-hidden">
+                      {attachment.mimeType.startsWith('image/') ? (
+                        <div className="w-full max-h-48 overflow-hidden bg-slate-900 flex items-center justify-center">
+                          <img
+                            src={attachment.base64 || attachment.url}
+                            alt="Broadcast attachment"
+                            className="w-full h-auto max-h-48 object-cover"
+                          />
+                        </div>
+                      ) : attachment.mimeType.includes('pdf') ? (
+                        <div className="p-3 bg-slate-50 flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-rose-500 text-white flex flex-col items-center justify-center shrink-0 shadow-xs">
+                            <FileText className="w-5 h-5" />
+                            <span className="text-[8px] font-bold">PDF</span>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-bold text-slate-800 truncate">
+                              {attachment.fileName}
+                            </div>
+                            <div className="text-[10px] text-slate-400">
+                              {attachment.fileSize ? `${(attachment.fileSize / 1024).toFixed(1)} KB` : 'PDF Document'} &bull; 1 page
+                            </div>
+                          </div>
+                          <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center text-slate-600">
+                            <Download className="w-3.5 h-3.5" />
+                          </div>
+                        </div>
+                      ) : attachment.mimeType.startsWith('video/') ? (
+                        <div className="w-full h-36 bg-slate-900 relative flex items-center justify-center text-white">
+                          <div className="w-10 h-10 rounded-full bg-white/30 backdrop-blur-xs flex items-center justify-center">
+                            <div className="w-0 h-0 border-y-6 border-y-transparent border-l-10 border-l-white ml-0.5" />
+                          </div>
+                          <div className="absolute bottom-2 left-2 text-[10px] bg-black/60 px-1.5 py-0.5 rounded text-white font-mono">
+                            0:15 &bull; {attachment.fileName}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-3 bg-slate-50 flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-amber-500 text-white flex items-center justify-center shrink-0">
+                            <FileText className="w-5 h-5" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-bold text-slate-800 truncate">
+                              {attachment.fileName}
+                            </div>
+                            <div className="text-[10px] text-slate-400">
+                              {attachment.fileSize ? `${(attachment.fileSize / 1024).toFixed(1)} KB` : 'Document'}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
-                {/* Action Links Preview if enabled */}
-                {buttonsEnabled && campaignButtons.length > 0 && (
-                  <div className="border-t border-slate-100 divide-y divide-slate-100 -mx-3 -mb-3 mt-2 bg-slate-50/70">
-                    {campaignButtons.map((btn) => (
-                      <div
-                        key={btn.id}
-                        className="py-1.5 px-3 text-center text-xs font-semibold text-[#128C7E] flex items-center justify-center gap-1.5 hover:bg-emerald-50/80 transition"
-                      >
-                        {btn.type === 'URL' && <ExternalLink className="w-3.5 h-3.5 text-[#128C7E]" />}
-                        {btn.type === 'PHONE' && <PhoneCall className="w-3.5 h-3.5 text-[#128C7E]" />}
-                        {btn.type === 'QUICK_REPLY' && <CornerDownLeft className="w-3.5 h-3.5 text-[#128C7E]" />}
-                        <span className="truncate">{btn.text || 'Action'}</span>
-                      </div>
-                    ))}
+                  {/* Caption & Message Body */}
+                  <div className="p-3 space-y-1.5">
+                    <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
+                      {renderedBody}
+                    </p>
+                    <div className="text-[10px] text-right text-slate-400">
+                      Just now &bull; {spintaxEnabled ? 'Spintax Dynamic' : 'Direct'}
+                    </div>
                   </div>
-                )}
+
+                  {/* Action Links Preview if enabled */}
+                  {buttonsEnabled && campaignButtons.length > 0 && (
+                    <div className="border-t border-slate-100 divide-y divide-slate-100 bg-slate-50/70">
+                      {campaignButtons.map((btn) => (
+                        <div
+                          key={btn.id}
+                          className="py-1.5 px-3 text-center text-xs font-semibold text-[#128C7E] flex items-center justify-center gap-1.5 hover:bg-emerald-50/80 transition"
+                        >
+                          {btn.type === 'URL' && <ExternalLink className="w-3.5 h-3.5 text-[#128C7E]" />}
+                          {btn.type === 'PHONE' && <PhoneCall className="w-3.5 h-3.5 text-[#128C7E]" />}
+                          {btn.type === 'QUICK_REPLY' && <CornerDownLeft className="w-3.5 h-3.5 text-[#128C7E]" />}
+                          <span className="truncate">{btn.text || 'Action'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Footer notice */}
