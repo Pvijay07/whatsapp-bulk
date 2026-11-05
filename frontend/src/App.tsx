@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import {
   dynamicStore,
   loadFromStorage,
@@ -23,35 +24,35 @@ import { DeliveryReportsView } from './components/DeliveryReportsView';
 import { VirtualNumbersView } from './components/VirtualNumbersView';
 import { WalletView } from './components/WalletView';
 import { AutoResponderView } from './components/AutoResponderView';
-import { MessageSquare, CheckCircle2, Send, Sparkles, Bot } from 'lucide-react';
+import { MessageSquare, CheckCircle2, Send } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<'crm' | 'campaigns' | 'reports' | 'numbers' | 'autoresponder' | 'wallet'>('crm');
 
-  // Dynamic application state
+  // Dynamic application state (v2 - Clean live storage, zero mock data)
   const [contacts, setContacts] = useState<Contact[]>(() =>
-    loadFromStorage('wa_saas_contacts_v1', initialContacts),
+    loadFromStorage('wa_saas_contacts_v2', initialContacts),
   );
   const [virtualNumbers, setVirtualNumbers] = useState<VirtualNumber[]>(() =>
-    loadFromStorage('wa_saas_numbers_v1', initialNumbers),
+    loadFromStorage('wa_saas_numbers_v2', initialNumbers),
   );
   const [templates, setTemplates] = useState<MessageTemplate[]>(() =>
-    loadFromStorage('wa_saas_templates_v1', initialTemplates),
+    loadFromStorage('wa_saas_templates_v2', initialTemplates),
   );
   const [campaigns, setCampaigns] = useState<Campaign[]>(() =>
-    loadFromStorage('wa_saas_campaigns_v1', initialCampaigns),
+    loadFromStorage('wa_saas_campaigns_v2', initialCampaigns),
   );
   const [messages, setMessages] = useState<MessageLog[]>(() =>
-    loadFromStorage('wa_saas_messages_v1', initialMessages),
+    loadFromStorage('wa_saas_messages_v2', initialMessages),
   );
   const [autoResponders, setAutoResponders] = useState<AutoResponderRule[]>(() =>
-    loadFromStorage('wa_saas_autoresp_v1', initialAutoResponders),
+    loadFromStorage('wa_saas_autoresp_v2', initialAutoResponders),
   );
   const [wallet, setWallet] = useState<WalletData>(() =>
-    loadFromStorage('wa_saas_wallet_v1', initialWallet),
+    loadFromStorage('wa_saas_wallet_v2', initialWallet),
   );
   const [warmupLogs, setWarmupLogs] = useState<WarmupLogEntry[]>(() =>
-    loadFromStorage('wa_saas_warmup_logs_v1', initialWarmupLogs),
+    loadFromStorage('wa_saas_warmup_logs_v2', initialWarmupLogs),
   );
 
   const [isLiveSyncing, setIsLiveSyncing] = useState(false);
@@ -70,118 +71,76 @@ export const App: React.FC = () => {
 
   // Sync state to local storage whenever it changes
   useEffect(() => {
-    saveToStorage('wa_saas_contacts_v1', contacts);
+    saveToStorage('wa_saas_contacts_v2', contacts);
   }, [contacts]);
 
   useEffect(() => {
-    saveToStorage('wa_saas_numbers_v1', virtualNumbers);
+    saveToStorage('wa_saas_numbers_v2', virtualNumbers);
   }, [virtualNumbers]);
 
   useEffect(() => {
-    saveToStorage('wa_saas_campaigns_v1', campaigns);
+    saveToStorage('wa_saas_campaigns_v2', campaigns);
   }, [campaigns]);
 
   useEffect(() => {
-    saveToStorage('wa_saas_messages_v1', messages);
+    saveToStorage('wa_saas_messages_v2', messages);
   }, [messages]);
 
   useEffect(() => {
-    saveToStorage('wa_saas_wallet_v1', wallet);
+    saveToStorage('wa_saas_wallet_v2', wallet);
   }, [wallet]);
 
   useEffect(() => {
-    saveToStorage('wa_saas_autoresp_v1', autoResponders);
+    saveToStorage('wa_saas_autoresp_v2', autoResponders);
   }, [autoResponders]);
 
   useEffect(() => {
-    saveToStorage('wa_saas_warmup_logs_v1', warmupLogs);
+    saveToStorage('wa_saas_warmup_logs_v2', warmupLogs);
   }, [warmupLogs]);
 
-  // Initial check against backend
+  // Initial check against backend & sync active live WhatsApp sessions
   useEffect(() => {
     const initBackend = async () => {
       setIsLiveSyncing(true);
       await dynamicStore.checkBackendConnection();
+
+      // Check live WhatsApp session status
+      try {
+        const res = await axios.get('/api/v1/session/status', { timeout: 3000 });
+        if (res.data?.isOnline && res.data?.connectedNumber) {
+          const rawNum = res.data.connectedNumber;
+          const formatted = rawNum.startsWith('+') ? rawNum : `+${rawNum}`;
+
+          setVirtualNumbers((prev) => {
+            if (!prev.some((n) => n.phoneNumber.replace(/[^\d]/g, '') === formatted.replace(/[^\d]/g, ''))) {
+              return [
+                {
+                  id: 'real-linked-session',
+                  phoneNumber: formatted,
+                  provider: 'Linked WhatsApp Device',
+                  type: 'MOBILE',
+                  status: 'ACTIVE',
+                  sessionStatus: 'CONNECTED',
+                  dailyLimit: 1000,
+                  dailySentCount: 0,
+                  healthScore: 100,
+                  warmupStage: 'WARMED_READY',
+                  proxyDisplay: 'Direct Handset WebSocket',
+                  monthlyRentalINR: '0.00',
+                  capabilities: { voice: true, sms: true, virtualMessaging: true },
+                  region: 'Active Linked Phone',
+                },
+                ...prev,
+              ];
+            }
+            return prev;
+          });
+        }
+      } catch (e) {}
+
       setIsLiveSyncing(false);
     };
     initBackend();
-  }, []);
-
-  // Dynamic Asynchronous Campaign Progression Worker
-  // Continuously monitors any campaign in 'SENDING' status and transitions message delivery
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setMessages((prevMessages) => {
-        let changed = false;
-        const now = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
-        const updatedMessages = prevMessages.map((msg) => {
-          // 1. Queued -> Sent
-          if (msg.status === 'QUEUED') {
-            changed = true;
-            return {
-              ...msg,
-              status: 'SENT' as const,
-              sentAt: now,
-              providerMessageId: msg.providerMessageId.startsWith('wamid.')
-                ? msg.providerMessageId
-                : `wamid.HBgL${msg.phoneNumber.replace('+', '')}FQIAEhgU${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
-            };
-          }
-
-          // 2. Sent -> Delivered
-          if (msg.status === 'SENT') {
-            changed = true;
-            return {
-              ...msg,
-              status: 'DELIVERED' as const,
-              deliveredAt: now,
-            };
-          }
-
-          // 3. Delivered -> Read (simulating user opening WhatsApp)
-          if (msg.status === 'DELIVERED' && Math.random() > 0.3) {
-            changed = true;
-            return {
-              ...msg,
-              status: 'READ' as const,
-              readAt: now,
-            };
-          }
-
-          return msg;
-        });
-
-        // If messages progressed, update corresponding campaign statistics dynamically
-        if (changed) {
-          setCampaigns((prevCampaigns) =>
-            prevCampaigns.map((camp) => {
-              const campMsgs = updatedMessages.filter((m) => m.campaignId === camp.id);
-              if (campMsgs.length === 0) return camp;
-
-              const sent = campMsgs.filter((m) => m.status !== 'QUEUED').length;
-              const delivered = campMsgs.filter((m) => m.status === 'DELIVERED' || m.status === 'READ').length;
-              const read = campMsgs.filter((m) => m.status === 'READ').length;
-              const failed = campMsgs.filter((m) => m.status === 'FAILED').length;
-              const isDone = delivered + failed >= camp.totalContacts && camp.totalContacts > 0;
-
-              return {
-                ...camp,
-                sentCount: sent,
-                deliveredCount: delivered,
-                readCount: read,
-                failedCount: failed,
-                status: isDone ? ('COMPLETED' as const) : camp.status,
-              };
-            }),
-          );
-        }
-
-        return changed ? updatedMessages : prevMessages;
-      });
-    }, 2000);
-
-    return () => clearInterval(interval);
   }, []);
 
   // 1. Triggered when client clicks on WhatsApp in CRM
@@ -191,7 +150,8 @@ export const App: React.FC = () => {
   };
 
   // 2. Triggered when client confirms "Send with Virtual Number"
-  const handleSendCampaign = (data: {
+  // TRANSMITS REAL WHATSAPP MESSAGES OVER LIVE BAILEYS WEBSOCKET (ZERO SIMULATION)
+  const handleSendCampaign = async (data: {
     campaignName: string;
     dispatchType: 'MULTI_NUMBER_POOL' | 'DEDICATED_NUMBER';
     senderNumber: string;
@@ -223,54 +183,118 @@ export const App: React.FC = () => {
       createdAt: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
     };
 
-    // Create dynamic queued message records with Round-Robin Virtual Number assignment!
-    const newMsgLogs: MessageLog[] = data.recipients.map((rec, idx) => {
-      // If pool mode, cycle through available numbers
-      const assignedNumber =
-        data.dispatchType === 'MULTI_NUMBER_POOL' && virtualNumbers.length > 0
-          ? virtualNumbers[idx % virtualNumbers.length].phoneNumber
-          : data.senderNumber;
-
-      return {
-        id: `msg-${Date.now()}-${idx}`,
-        campaignId: newCampId,
-        contactName: rec.name,
-        phoneNumber: rec.phoneNumber,
-        status: 'QUEUED',
-        providerMessageId: `VMSG-${rec.phoneNumber.replace('+', '')}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
-        costINR: '1.00',
-      };
-    });
-
-    // Update state
     setCampaigns((prev) => [newCampaign, ...prev]);
-    setMessages((prev) => [...newMsgLogs, ...prev]);
 
-    // Update Wallet balance & ledger
-    const newBal = (parseFloat(wallet.balanceINR) - data.totalCostINR).toFixed(2);
-    setWallet((prev) => ({
-      ...prev,
-      balanceINR: newBal,
-      availableINR: newBal,
-      transactions: [
-        {
-          id: `tx-${Date.now()}`,
-          transactionType: 'DEBIT',
-          amountINR: `-${data.totalCostINR.toFixed(2)}`,
-          balanceAfterINR: newBal,
-          referenceId: newCampId,
-          idempotencyKey: `settle_${newCampId}_${Date.now()}`,
-          reason: `Campaign: ${data.campaignName} (${data.recipients.length} msgs @ ₹1.00)`,
-          createdAt: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
-        },
-        ...prev.transactions,
-      ],
+    // Initial message records in QUEUED state
+    const initialLogs: MessageLog[] = data.recipients.map((rec, idx) => ({
+      id: `msg-${Date.now()}-${idx}`,
+      campaignId: newCampId,
+      contactName: rec.name,
+      phoneNumber: rec.phoneNumber,
+      status: 'QUEUED',
+      providerMessageId: 'Pending WebSocket dispatch...',
+      costINR: '1.00',
     }));
 
-    showToast(`Campaign dispatched! ${data.recipients.length} messages sent via ${data.senderNumber}`);
-
-    // Transition immediately to Delivery Reports so client watches live delivery!
+    setMessages((prev) => [...initialLogs, ...prev]);
+    showToast(`Dispatching campaign: ${data.recipients.length} real messages queued.`);
     setCurrentTab('reports');
+
+    let sentCount = 0;
+    let failedCount = 0;
+
+    // Send each message individually across real WebSocket with humanized delay
+    for (let i = 0; i < data.recipients.length; i++) {
+      const rec = data.recipients[i];
+      const logId = initialLogs[i].id;
+
+      // Spintax & parameter resolution
+      let text = data.customMessageText.replace(/\{\{1\}\}/g, rec.name || 'Customer');
+      if (data.spintaxEnabled) {
+        text = text.replace(/\{([^{}]+)\}/g, (_, choices) => {
+          const arr = choices.split('|');
+          return arr[Math.floor(Math.random() * arr.length)];
+        });
+      }
+
+      // Delay between dispatches (anti-ban spacing)
+      if (i > 0 && data.delayIntervalSec > 0) {
+        await new Promise((r) => setTimeout(r, data.delayIntervalSec * 1000));
+      }
+
+      // REAL TRANSMISSION TO WHATSAPP NOISE PROTOCOL
+      const res = await dynamicStore.sendRealMessage(rec.phoneNumber, text);
+      const now = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+      if (res.success) {
+        sentCount++;
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === logId
+              ? {
+                  ...m,
+                  status: 'SENT',
+                  providerMessageId: res.messageId,
+                  sentAt: now,
+                }
+              : m,
+          ),
+        );
+      } else {
+        failedCount++;
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === logId
+              ? {
+                  ...m,
+                  status: 'FAILED',
+                  errorCode: 'SESSION_OFFLINE',
+                  providerMessageId: res.error || 'Device not linked',
+                }
+              : m,
+          ),
+        );
+      }
+
+      // Live update campaign counters
+      setCampaigns((prev) =>
+        prev.map((c) =>
+          c.id === newCampId
+            ? {
+                ...c,
+                sentCount,
+                deliveredCount: sentCount,
+                failedCount,
+                status: i === data.recipients.length - 1 ? 'COMPLETED' : 'SENDING',
+              }
+            : c,
+        ),
+      );
+    }
+
+    // Deduct actual successful sends from prepaid balance
+    const actualCost = sentCount * 1.0;
+    if (actualCost > 0) {
+      const newBal = (parseFloat(wallet.balanceINR) - actualCost).toFixed(2);
+      setWallet((prev) => ({
+        ...prev,
+        balanceINR: newBal,
+        availableINR: newBal,
+        transactions: [
+          {
+            id: `tx-${Date.now()}`,
+            transactionType: 'DEBIT',
+            amountINR: `-${actualCost.toFixed(2)}`,
+            balanceAfterINR: newBal,
+            referenceId: newCampId,
+            idempotencyKey: `settle_${newCampId}_${Date.now()}`,
+            reason: `Campaign: ${data.campaignName} (${sentCount} delivered msgs @ ₹1.00)`,
+            createdAt: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+          },
+          ...prev.transactions,
+        ],
+      }));
+    }
   };
 
   // Add Contact
@@ -303,7 +327,7 @@ export const App: React.FC = () => {
     }
 
     setContacts((prev) => [...newEntries, ...prev]);
-    showToast(`Successfully imported ${importedCount} contacts with affirmative opt-in!`);
+    showToast(`Successfully imported ${importedCount} contacts!`);
   };
 
   // Provision virtual number
@@ -344,7 +368,7 @@ export const App: React.FC = () => {
     const newNum: VirtualNumber = {
       id: `num-${Date.now()}`,
       phoneNumber: res.phoneNumber,
-      provider: '5SIM / SMS-Activate Gateway',
+      provider: 'SMS OTP Verified Channel',
       type: 'MOBILE',
       status: 'ACTIVE',
       sessionStatus: 'CONNECTED',
@@ -373,14 +397,14 @@ export const App: React.FC = () => {
           amountINR: `-${res.costINR.toFixed(2)}`,
           balanceAfterINR: newBal,
           idempotencyKey: `auto_prov_${res.orderId}_${Date.now()}`,
-          reason: `1-Click Virtual Number Provisioning: ${res.phoneNumber} (Order ${res.orderId})`,
+          reason: `Virtual Number Provisioning: ${res.phoneNumber} (Order ${res.orderId})`,
           createdAt: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
         },
         ...prev.transactions,
       ],
     }));
 
-    showToast(`Auto-provisioned ${res.phoneNumber}! Joined active pool.`);
+    showToast(`Provisioned ${res.phoneNumber}! Joined active pool.`);
   };
 
   // Automated Account Warmer trigger
@@ -477,7 +501,7 @@ export const App: React.FC = () => {
                   Campaign History & Live Senders
                 </h2>
                 <p className="text-sm text-slate-500 mt-1">
-                  Manage active WhatsApp templates and campaign runs across your Indian virtual numbers.
+                  Manage active WhatsApp dispatches across your verified Indian virtual channels.
                 </p>
               </div>
               <button
@@ -489,44 +513,64 @@ export const App: React.FC = () => {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {campaigns.map((camp) => (
-                <div
-                  key={camp.id}
-                  className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-3"
+            {campaigns.length === 0 ? (
+              <div className="bg-white p-12 rounded-2xl border border-slate-200/80 text-center space-y-3">
+                <Send className="w-12 h-12 text-slate-300 mx-auto" />
+                <h3 className="text-base font-bold text-slate-800">No Campaigns Dispatched Yet</h3>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                  Click 'New Campaign' or select a contact in CRM to dispatch your first bulk WhatsApp campaign.
+                </p>
+                <button
+                  onClick={() => handleOpenWhatsApp(null)}
+                  className="px-4 py-2 bg-[#128C7E] hover:bg-[#075E54] text-white text-xs font-bold rounded-xl shadow-xs"
                 >
-                  <div className="flex items-center justify-between">
-                    <span
-                      className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${
-                        camp.status === 'COMPLETED'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : camp.status === 'SENDING'
-                          ? 'bg-blue-100 text-blue-800 animate-pulse'
-                          : 'bg-amber-100 text-amber-800'
-                      }`}
-                    >
-                      ● {camp.status}
-                    </span>
-                    <span className="text-xs text-slate-400">{camp.createdAt}</span>
+                  Create Campaign
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {campaigns.map((camp) => (
+                  <div
+                    key={camp.id}
+                    className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${
+                          camp.status === 'COMPLETED'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : camp.status === 'SENDING'
+                            ? 'bg-blue-100 text-blue-800 animate-pulse'
+                            : 'bg-amber-100 text-amber-800'
+                        }`}
+                      >
+                        ● {camp.status}
+                      </span>
+                      <span className="text-xs text-slate-400">{camp.createdAt}</span>
+                    </div>
+                    <h3 className="text-base font-bold text-slate-900">{camp.name}</h3>
+                    <div className="text-xs text-slate-600">
+                      Sender: <span className="font-mono font-semibold">{camp.senderNumber}</span> • Mode:{' '}
+                      <span className="font-semibold text-emerald-700">
+                        {camp.dispatchType === 'MULTI_NUMBER_POOL' ? 'Virtual Pool' : 'Dedicated'}
+                      </span>
+                    </div>
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                      <span>
+                        Delivered: <strong className="text-emerald-700">{camp.deliveredCount}</strong>/{camp.totalContacts}
+                        {camp.failedCount > 0 && <span className="text-rose-600 ml-2">({camp.failedCount} failed)</span>}
+                      </span>
+                      <button
+                        onClick={() => setCurrentTab('reports')}
+                        className="text-[#128C7E] font-bold hover:underline"
+                      >
+                        View Live Report →
+                      </button>
+                    </div>
                   </div>
-                  <h3 className="text-base font-bold text-slate-900">{camp.name}</h3>
-                  <div className="text-xs text-slate-600">
-                    Sender: <span className="font-mono font-semibold">{camp.senderNumber}</span> • Mode: <span className="font-semibold text-emerald-700">{camp.dispatchType === 'MULTI_NUMBER_POOL' ? 'Virtual Pool' : 'Dedicated'}</span>
-                  </div>
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                    <span>
-                      Delivered: <strong className="text-emerald-700">{camp.deliveredCount}</strong>/{camp.totalContacts}
-                    </span>
-                    <button
-                      onClick={() => setCurrentTab('reports')}
-                      className="text-[#128C7E] font-bold hover:underline"
-                    >
-                      View Live Report →
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

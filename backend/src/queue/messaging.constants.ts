@@ -5,3 +5,4 @@ export interface SendMessageJobData {
   messageId: string;
   organizationId: string;
 }
+

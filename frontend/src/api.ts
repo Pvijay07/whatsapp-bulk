@@ -27,15 +27,15 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Keys for local persistence
+// Keys for local persistence (v2 - Clean live storage, no mock data)
 const STORAGE_KEYS = {
-  CONTACTS: 'wa_saas_contacts_v1',
-  NUMBERS: 'wa_saas_numbers_v1',
-  TEMPLATES: 'wa_saas_templates_v1',
-  CAMPAIGNS: 'wa_saas_campaigns_v1',
-  MESSAGES: 'wa_saas_messages_v1',
-  WALLET: 'wa_saas_wallet_v1',
-  WARMUP_LOGS: 'wa_saas_warmup_logs_v1',
+  CONTACTS: 'wa_saas_contacts_v2',
+  NUMBERS: 'wa_saas_numbers_v2',
+  TEMPLATES: 'wa_saas_templates_v2',
+  CAMPAIGNS: 'wa_saas_campaigns_v2',
+  MESSAGES: 'wa_saas_messages_v2',
+  WALLET: 'wa_saas_wallet_v2',
+  WARMUP_LOGS: 'wa_saas_warmup_logs_v2',
   TOKEN: 'wa_saas_token',
 };
 
@@ -347,6 +347,29 @@ export class DynamicStoreManager {
     const updated = [newEntry, ...currentLogs.slice(0, 49)];
     saveToStorage(STORAGE_KEYS.WARMUP_LOGS, updated);
     return { success: true, entry: newEntry };
+  }
+
+  // Transmit REAL WhatsApp message directly via backend Baileys WebSocket (no simulation)
+  async sendRealMessage(recipientPhoneNumber: string, messageText: string): Promise<{
+    success: boolean;
+    messageId: string;
+    error?: string;
+  }> {
+    try {
+      const res = await apiClient.post('/session/send', {
+        recipientPhoneNumber,
+        messageText,
+      });
+      return res.data;
+    } catch (err: any) {
+      const errorMsg =
+        err.response?.data?.message || err.message || 'Failed to dispatch via WhatsApp WebSocket';
+      return {
+        success: false,
+        messageId: '',
+        error: errorMsg,
+      };
+    }
   }
 }
 

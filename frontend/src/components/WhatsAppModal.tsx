@@ -95,7 +95,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
         senderNumber:
           dispatchType === 'MULTI_NUMBER_POOL'
             ? `Virtual Pool (${virtualNumbers.length} Numbers)`
-            : selectedNumber?.phoneNumber || '+918045678901',
+            : selectedNumber?.phoneNumber || 'Linked WhatsApp Account',
         senderPoolCount: dispatchType === 'MULTI_NUMBER_POOL' ? virtualNumbers.length : 1,
         customMessageText: messageText,
         recipients: eligibleRecipients,
@@ -394,7 +394,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
                     <div className="text-xs font-bold leading-tight flex items-center gap-1">
                       {dispatchType === 'MULTI_NUMBER_POOL'
                         ? 'Virtual Number Pool'
-                        : selectedNumber?.phoneNumber}
+                        : selectedNumber?.phoneNumber || 'Linked WhatsApp Account'}
                       <CheckCircle2 className="w-3 h-3 text-[#25D366] fill-[#25D366]" />
                     </div>
                     <div className="text-[10px] text-emerald-100">

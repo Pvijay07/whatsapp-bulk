@@ -41,54 +41,11 @@ export class VirtualPoolManagerService implements OnModuleInit {
   }
 
   /**
-   * Initialize predefined virtual numbers in the pool
+   * Initialize virtual numbers in the pool (clean start - no fake seed numbers)
    */
   private async initDefaultPool() {
-    const defaultNumbers = [
-      {
-        id: 'pool-num-1',
-        phoneNumber: '+918045678901',
-        proxyDisplay: 'Airtel 4G Mobile (Bangalore)',
-        dailyLimit: 500,
-        initialSent: 124,
-        health: 98,
-        warmup: 'WARMED_READY' as const,
-      },
-      {
-        id: 'pool-num-2',
-        phoneNumber: '+919876599999',
-        proxyDisplay: 'Jio 4G Mobile (Mumbai)',
-        dailyLimit: 500,
-        initialSent: 88,
-        health: 96,
-        warmup: 'WARMED_READY' as const,
-      },
-      {
-        id: 'pool-num-3',
-        phoneNumber: '+919822211333',
-        proxyDisplay: 'Vodafone 4G Mobile (Delhi)',
-        dailyLimit: 500,
-        initialSent: 45,
-        health: 94,
-        warmup: 'WARMED_READY' as const,
-      },
-    ];
-
-    for (const num of defaultNumbers) {
-      this.poolMetadata.set(num.phoneNumber, {
-        id: num.id,
-        phoneNumber: num.phoneNumber,
-        status: 'ONLINE',
-        healthScore: num.health,
-        warmupStage: num.warmup,
-        dailySentCount: num.initialSent,
-        dailyQuota: num.dailyLimit,
-        proxyDisplay: num.proxyDisplay,
-        lastActive: new Date(),
-      });
-    }
-
-    this.logger.log(`Virtual Number Pool loaded with ${this.poolMetadata.size} virtual channels.`);
+    this.poolMetadata.clear();
+    this.logger.log('Virtual Number Pool initialized. Waiting for real linked devices or verified sessions.');
   }
 
   /**
@@ -149,37 +106,39 @@ export class VirtualPoolManagerService implements OnModuleInit {
 
     // Check if real active socket exists for this number
     const activeSock = this.sessions.get(sender.phoneNumber);
-    if (activeSock) {
-      try {
-        this.logger.log(`[Virtual Pool] Dispatching via ${sender.phoneNumber} over WebSocket to ${jid}`);
-        const sent = await activeSock.sendMessage(jid, { text });
-        const providerId = sent?.key?.id || realMsgId;
-
-        // Update quota and activity
-        sender.dailySentCount++;
-        sender.lastActive = new Date();
-
-        return {
-          success: true,
-          messageId: providerId,
-          senderNumber: sender.phoneNumber,
-        };
-      } catch (e: any) {
-        this.logger.error(`Live WebSocket dispatch error on ${sender.phoneNumber}: ${e.message}`);
-        sender.healthScore = Math.max(0, sender.healthScore - 5);
-      }
+    if (!activeSock) {
+      return {
+        success: false,
+        messageId: '',
+        senderNumber: sender.phoneNumber,
+        error: `Number ${sender.phoneNumber} does not have an active WhatsApp socket connection. Please scan the QR code to link device.`,
+      };
     }
 
-    // Simulated / Cloud Virtual SIM gateway fallback
-    sender.dailySentCount++;
-    sender.lastActive = new Date();
-    this.logger.log(`[Virtual Gateway] Dispatched via ${sender.phoneNumber} to ${recipientNumber} (ID: ${realMsgId})`);
+    try {
+      this.logger.log(`[Virtual Pool] Dispatching via ${sender.phoneNumber} over WebSocket to ${jid}`);
+      const sent = await activeSock.sendMessage(jid, { text });
+      const providerId = sent?.key?.id || realMsgId;
 
-    return {
-      success: true,
-      messageId: realMsgId,
-      senderNumber: sender.phoneNumber,
-    };
+      // Update quota and activity
+      sender.dailySentCount++;
+      sender.lastActive = new Date();
+
+      return {
+        success: true,
+        messageId: providerId,
+        senderNumber: sender.phoneNumber,
+      };
+    } catch (e: any) {
+      this.logger.error(`Live WebSocket dispatch error on ${sender.phoneNumber}: ${e.message}`);
+      sender.healthScore = Math.max(0, sender.healthScore - 5);
+      return {
+        success: false,
+        messageId: '',
+        senderNumber: sender.phoneNumber,
+        error: `WhatsApp WebSocket delivery failed: ${e.message}`,
+      };
+    }
   }
 
   /**

@@ -19,25 +19,9 @@ export class AccountWarmerService implements OnModuleInit {
 
   onModuleInit() {
     this.logger.log('Starting Account Warmer Service...');
-    // Initial warmup logs
-    this.warmupLogs = [
-      {
-        id: 'wl-1',
-        fromNumber: '+918045678901',
-        toNumber: '+919876599999',
-        snippet: 'Hey! Are you available to review the project brief today?',
-        timestamp: '10:15 AM',
-      },
-      {
-        id: 'wl-2',
-        fromNumber: '+919876599999',
-        toNumber: '+918045678901',
-        snippet: 'Yes, looking at it right now. Everything seems on track! 👍',
-        timestamp: '10:17 AM',
-      },
-    ];
+    this.warmupLogs = [];
 
-    // Background interval: execute automated warmup conversation every 45 seconds
+    // Background interval: execute automated warmup conversation every 45 seconds if at least 2 real numbers exist
     setInterval(() => {
       if (this.isAutoWarmingEnabled) {
         this.runWarmupCycle();

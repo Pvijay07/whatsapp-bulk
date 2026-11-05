@@ -1,142 +1,21 @@
 import { Contact, VirtualNumber, WhatsAppAccount, MessageTemplate, Campaign, MessageLog, WalletData, WarmupLogEntry } from './types';
 
-export const initialContacts: Contact[] = [
-  {
-    id: 'c-1',
-    name: 'Ramesh Kumar',
-    phoneNumber: '+919876543210',
-    isSuppressed: false,
-    optInConsent: true,
-    tag: 'Bangalore Leads',
-    createdAt: '2026-11-01',
-  },
-  {
-    id: 'c-2',
-    name: 'Priya Sharma',
-    phoneNumber: '+919812345678',
-    isSuppressed: false,
-    optInConsent: true,
-    tag: 'VIP Customers',
-    createdAt: '2026-11-02',
-  },
-  {
-    id: 'c-3',
-    name: 'Vikram Patel',
-    phoneNumber: '+919723456789',
-    isSuppressed: false,
-    optInConsent: true,
-    tag: 'Ahmedabad Retail',
-    createdAt: '2026-11-02',
-  },
-  {
-    id: 'c-4',
-    name: 'Ananya Iyer',
-    phoneNumber: '+919934567890',
-    isSuppressed: false,
-    optInConsent: true,
-    tag: 'Chennai Wholesale',
-    createdAt: '2026-11-03',
-  },
-  {
-    id: 'c-5',
-    name: 'Rajesh Rao',
-    phoneNumber: '+919845012345',
-    isSuppressed: true, // Opted out (STOP reply)
-    optInConsent: false,
-    tag: 'Suppressed / Opted Out',
-    createdAt: '2026-10-28',
-  },
-];
+// Clean initial state (Zero mock data - genuine live system)
+export const initialContacts: Contact[] = [];
 
-export const initialNumbers: VirtualNumber[] = [
-  {
-    id: 'num-1',
-    phoneNumber: '+918045678901',
-    provider: 'Indian Virtual Telephony',
-    type: 'LANDLINE_DID',
-    status: 'ACTIVE',
-    sessionStatus: 'CONNECTED',
-    dailyLimit: 500,
-    dailySentCount: 124,
-    healthScore: 98,
-    warmupStage: 'WARMED_READY',
-    proxyDisplay: 'Airtel 4G Cellular (Bangalore)',
-    monthlyRentalINR: '599.00',
-    capabilities: {
-      voice: true,
-      sms: false,
-      virtualMessaging: true,
-    },
-    region: 'Bangalore Virtual Gateway',
-  },
-  {
-    id: 'num-2',
-    phoneNumber: '+919876599999',
-    provider: 'Cloud Virtual SIM Gateway',
-    type: 'MOBILE',
-    status: 'ACTIVE',
-    sessionStatus: 'CONNECTED',
-    dailyLimit: 500,
-    dailySentCount: 88,
-    healthScore: 96,
-    warmupStage: 'WARMED_READY',
-    proxyDisplay: 'Jio 4G Cellular (Mumbai)',
-    monthlyRentalINR: '799.00',
-    capabilities: {
-      voice: true,
-      sms: true,
-      virtualMessaging: true,
-    },
-    region: 'Mumbai Virtual Gateway',
-  },
-  {
-    id: 'num-3',
-    phoneNumber: '+919822211333',
-    provider: 'Cloud Virtual SIM Gateway',
-    type: 'MOBILE',
-    status: 'ACTIVE',
-    sessionStatus: 'CONNECTED',
-    dailyLimit: 500,
-    dailySentCount: 45,
-    healthScore: 94,
-    warmupStage: 'WARMED_READY',
-    proxyDisplay: 'Vodafone 4G Cellular (Delhi)',
-    monthlyRentalINR: '799.00',
-    capabilities: {
-      voice: true,
-      sms: true,
-      virtualMessaging: true,
-    },
-    region: 'Delhi Virtual Gateway',
-  },
-];
+export const initialNumbers: VirtualNumber[] = [];
 
-export const initialWhatsAppAccounts: WhatsAppAccount[] = [
-  {
-    id: 'waba-1',
-    virtualNumberId: 'num-1',
-    displayNumber: '+91 80 4567 8901',
-    sessionState: 'ONLINE',
-    status: 'CONNECTED',
-  },
-  {
-    id: 'waba-2',
-    virtualNumberId: 'num-2',
-    displayNumber: '+91 98765 99999',
-    sessionState: 'ONLINE',
-    status: 'CONNECTED',
-  },
-];
+export const initialWhatsAppAccounts: WhatsAppAccount[] = [];
 
 export const initialTemplates: MessageTemplate[] = [
   {
     id: 'tmpl-1',
-    name: 'Diwali Festive Offer',
+    name: 'Special Promotion Offer',
     category: 'MARKETING',
     language: 'en_US',
-    header: '✨ Diwali Festive Exclusive',
-    bodyText: '{Hello|Hi|Greetings} {{1}}! {Celebrate this festive season with|Enjoy} an exclusive 25% discount across all products. Use coupon code FESTIVE25 at checkout. Valid until midnight tomorrow.',
-    buttons: ['Claim Discount', 'Opt Out'],
+    header: '✨ Special Exclusive Offer',
+    bodyText: '{Hello|Hi|Greetings} {{1}}! {We are offering an exclusive discount today:|Check out our special promotion:} 25% off across all items. Reply YES to receive details!',
+    buttons: ['Claim Offer', 'Opt Out'],
     supportsSpintax: true,
   },
   {
@@ -144,18 +23,18 @@ export const initialTemplates: MessageTemplate[] = [
     name: 'Order Out For Delivery',
     category: 'UTILITY',
     language: 'en_US',
-    header: '📦 Order Out For Delivery',
-    bodyText: '{Hi|Dear} {{1}}, your order #IND-9021 is out for delivery today via express courier. {Please keep cash or UPI ready for receipt.|Delivery agent will contact you shortly.}',
+    header: '📦 Delivery Update',
+    bodyText: '{Hi|Dear} {{1}}, your order is out for delivery today. {Our delivery courier will arrive shortly.|Please keep your phone reachable.}',
     buttons: ['Track Order', 'Contact Support'],
     supportsSpintax: true,
   },
   {
     id: 'tmpl-3',
-    name: 'Payment Due Reminder',
+    name: 'Invoice Due Reminder',
     category: 'UTILITY',
     language: 'en_US',
     header: '📄 Invoice Reminder',
-    bodyText: '{Hello|Dear} {{1}}, this is a friendly reminder that invoice #INV-4418 for ₹4,850 is due today. Tap below to settle easily.',
+    bodyText: '{Hello|Dear} {{1}}, this is a friendly reminder that invoice #INV-4418 is due today. Tap below to settle easily.',
     buttons: ['Pay via UPI', 'View PDF'],
     supportsSpintax: true,
   },
@@ -168,7 +47,7 @@ export const initialAutoResponders = [
     matchType: 'CONTAINS' as const,
     replyText: 'Hello! Our Virtual WhatsApp SaaS plans start from ₹499/mo including Indian virtual numbers. Reply with DEMO to start!',
     isActive: true,
-    triggerCount: 42,
+    triggerCount: 0,
   },
   {
     id: 'ar-2',
@@ -176,7 +55,7 @@ export const initialAutoResponders = [
     matchType: 'EXACT' as const,
     replyText: 'Festive offer active! Use code FESTIVE25 for 25% extra credits on your next wallet recharge.',
     isActive: true,
-    triggerCount: 19,
+    triggerCount: 0,
   },
   {
     id: 'ar-3',
@@ -184,131 +63,29 @@ export const initialAutoResponders = [
     matchType: 'EXACT' as const,
     replyText: 'You have been successfully unsubscribed. You will not receive any further automated messages.',
     isActive: true,
-    triggerCount: 8,
+    triggerCount: 0,
   },
 ];
 
-export const initialCampaigns: Campaign[] = [
-  {
-    id: 'camp-101',
-    name: 'Festive Flash Sale - Pool Broadcast',
-    dispatchType: 'MULTI_NUMBER_POOL',
-    senderNumber: 'Virtual Pool (3 +91 Numbers)',
-    senderPoolCount: 3,
-    customMessageText: '{Hello|Hi|Greetings} {{1}}! Celebrate this festive season with an exclusive 25% discount across all products. Use coupon code FESTIVE25 at checkout.',
-    status: 'COMPLETED',
-    totalContacts: 4,
-    sentCount: 4,
-    deliveredCount: 4,
-    readCount: 3,
-    failedCount: 0,
-    delayIntervalSec: 3,
-    spintaxEnabled: true,
-    reservedINR: '4.00',
-    actualCostINR: '4.00',
-    createdAt: '2026-11-04 14:30',
-  },
-];
+export const initialCampaigns: Campaign[] = [];
 
-export const initialMessages: MessageLog[] = [
-  {
-    id: 'msg-1',
-    campaignId: 'camp-101',
-    contactName: 'Ramesh Kumar',
-    phoneNumber: '+919876543210',
-    status: 'READ',
-    providerMessageId: 'VMSG-919876543210-A19F8',
-    costINR: '1.00',
-    sentAt: '14:30:02',
-    deliveredAt: '14:30:04',
-    readAt: '14:31:12',
-  },
-  {
-    id: 'msg-2',
-    campaignId: 'camp-101',
-    contactName: 'Priya Sharma',
-    phoneNumber: '+919812345678',
-    status: 'READ',
-    providerMessageId: 'VMSG-919812345678-B23E7',
-    costINR: '1.00',
-    sentAt: '14:30:05',
-    deliveredAt: '14:30:08',
-    readAt: '14:32:00',
-  },
-  {
-    id: 'msg-3',
-    campaignId: 'camp-101',
-    contactName: 'Vikram Patel',
-    phoneNumber: '+919723456789',
-    status: 'DELIVERED',
-    providerMessageId: 'VMSG-919723456789-C88D4',
-    costINR: '1.00',
-    sentAt: '14:30:09',
-    deliveredAt: '14:30:12',
-  },
-  {
-    id: 'msg-4',
-    campaignId: 'camp-101',
-    contactName: 'Ananya Iyer',
-    phoneNumber: '+919934567890',
-    status: 'READ',
-    providerMessageId: 'VMSG-919934567890-D99A1',
-    costINR: '1.00',
-    sentAt: '14:30:13',
-    deliveredAt: '14:30:16',
-    readAt: '14:34:10',
-  },
-];
+export const initialMessages: MessageLog[] = [];
+
+export const initialWarmupLogs: WarmupLogEntry[] = [];
 
 export const initialWallet: WalletData = {
-  balanceINR: '4996.00',
+  balanceINR: '1000.00',
   reservedINR: '0.00',
-  availableINR: '4996.00',
+  availableINR: '1000.00',
   transactions: [
     {
-      id: 'tx-1',
+      id: 'tx-init',
       transactionType: 'CREDIT',
-      amountINR: '+5000.00',
-      balanceAfterINR: '5000.00',
-      idempotencyKey: 'recharge_init_pg_90123',
-      reason: 'UPI / NetBanking Wallet Top-up (Cashfree)',
-      createdAt: '2026-11-04 12:00',
-    },
-    {
-      id: 'tx-2',
-      transactionType: 'DEBIT',
-      amountINR: '-4.00',
-      balanceAfterINR: '4996.00',
-      referenceId: 'camp-101',
-      idempotencyKey: 'settle_camp-101_1730713800',
-      reason: 'Campaign Delivery: Festive Flash Sale (4 msgs @ ₹1.00)',
-      createdAt: '2026-11-04 14:31',
+      amountINR: '+1000.00',
+      balanceAfterINR: '1000.00',
+      idempotencyKey: 'init_wallet_balance',
+      reason: 'Initial Account Wallet Balance',
+      createdAt: new Date().toLocaleDateString('en-IN'),
     },
   ],
 };
-
-export const initialWarmupLogs: WarmupLogEntry[] = [
-  {
-    id: 'wl-1',
-    fromNumber: '+918045678901',
-    toNumber: '+919876599999',
-    snippet: 'Hey! Are you available to review the project brief today?',
-    timestamp: '10:15 AM',
-  },
-  {
-    id: 'wl-2',
-    fromNumber: '+919876599999',
-    toNumber: '+918045678901',
-    snippet: 'Yes, looking at it right now. Everything seems on track! 👍',
-    timestamp: '10:17 AM',
-  },
-  {
-    id: 'wl-3',
-    fromNumber: '+919822211333',
-    toNumber: '+918045678901',
-    snippet: 'Received the catalog. Will place the bulk order this afternoon.',
-    timestamp: '10:25 AM',
-  },
-];
-
-

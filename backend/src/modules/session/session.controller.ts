@@ -1,4 +1,4 @@
-import { Controller, Get, Post, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Body, HttpCode, HttpStatus, BadRequestException } from '@nestjs/common';
 import { BaileysSessionService } from '../../providers/messaging/baileys-session.service';
 
 @Controller('session')
@@ -15,5 +15,36 @@ export class SessionController {
   async logout() {
     return this.baileysService.logout();
   }
-}
 
+  /**
+   * Transmits a real WhatsApp message over the live Baileys WebSocket protocol.
+   * Throws an authentic error if device is not linked (NO mock data / NO simulated delivery).
+   */
+  @Post('send')
+  @HttpCode(HttpStatus.OK)
+  async sendDirectMessage(
+    @Body() body: { recipientPhoneNumber: string; messageText: string },
+  ) {
+    if (!body.recipientPhoneNumber || !body.messageText) {
+      throw new BadRequestException('recipientPhoneNumber and messageText are required');
+    }
+
+    const session = this.baileysService.getSessionStatus();
+    if (!session.isOnline) {
+      throw new BadRequestException(
+        'WhatsApp device is not linked. Scan the QR code in Virtual Numbers to link your real WhatsApp account.',
+      );
+    }
+
+    const result = await this.baileysService.sendRealMessage(
+      body.recipientPhoneNumber,
+      body.messageText,
+    );
+
+    if (!result.success) {
+      throw new BadRequestException(result.error || 'Failed to deliver message via WhatsApp');
+    }
+
+    return result;
+  }
+}

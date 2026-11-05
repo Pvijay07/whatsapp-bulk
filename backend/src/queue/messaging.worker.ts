@@ -102,23 +102,6 @@ export async function processSingleMessage(
       where: { id: campaignId },
       data: { sentCount: { increment: 1 } },
     });
-
-    // Simulate realistic delivery after 1-2 seconds
-    setTimeout(async () => {
-      try {
-        await prisma.message.update({
-          where: { id: messageId },
-          data: {
-            status: MessageStatus.DELIVERED,
-            deliveredAt: new Date(),
-          },
-        });
-        await prisma.campaign.update({
-          where: { id: campaignId },
-          data: { deliveredCount: { increment: 1 } },
-        });
-      } catch (e) {}
-    }, 1500);
   } else {
     await prisma.message.update({
       where: { id: messageId },

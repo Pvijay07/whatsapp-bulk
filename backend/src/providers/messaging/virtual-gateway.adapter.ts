@@ -20,7 +20,8 @@ export class VirtualGatewayAdapter implements MessagingProvider {
   ) {}
 
   /**
-   * Dispatches via Saasyto-style Multi-Number Virtual Pool with Round-Robin load balancing
+   * Dispatches via real WhatsApp session (Baileys WebSocket) or real Virtual Number Pool.
+   * Fails honestly if no real device is connected (zero mock data).
    */
   async sendTemplateMessage(
     request: SendTemplateMessageRequest,
@@ -29,7 +30,33 @@ export class VirtualGatewayAdapter implements MessagingProvider {
       request.components?.find((c) => c.type === 'body')?.parameters?.[0]?.text ||
       `Direct WhatsApp message to ${request.recipientPhoneNumber}`;
 
-    // 1. Dispatch through the Virtual Number Pool Manager (Round-Robin)
+    // 1. If primary multi-device Baileys session is online, send REAL message
+    if (this.baileysService.getSessionStatus().isOnline) {
+      const realResult = await this.baileysService.sendRealMessage(
+        request.recipientPhoneNumber,
+        bodyText,
+      );
+
+      if (realResult.success) {
+        return {
+          providerMessageId: realResult.messageId,
+          status: 'SENT',
+          rawResponse: {
+            dispatchedVia: this.baileysService.getSessionStatus().connectedNumber,
+            id: realResult.messageId,
+          },
+        };
+      } else {
+        return {
+          providerMessageId: '',
+          status: 'FAILED',
+          errorCode: 'REAL_DELIVERY_FAILED',
+          errorMessage: realResult.error,
+        };
+      }
+    }
+
+    // 2. Dispatch through pool manager
     const result = await this.poolManager.dispatchPoolMessage(
       request.recipientPhoneNumber,
       bodyText,
@@ -49,8 +76,10 @@ export class VirtualGatewayAdapter implements MessagingProvider {
       return {
         providerMessageId: '',
         status: 'FAILED',
-        errorCode: 'POOL_DISPATCH_ERROR',
-        errorMessage: result.error,
+        errorCode: 'NO_ACTIVE_WHATSAPP_SESSION',
+        errorMessage:
+          result.error ||
+          'No active WhatsApp session connected. Please scan the QR code in Virtual Numbers to link your real WhatsApp account.',
       };
     }
   }
@@ -58,16 +87,16 @@ export class VirtualGatewayAdapter implements MessagingProvider {
   async getMessageStatus(providerMessageId: string): Promise<MessageStatusResult> {
     return {
       providerMessageId,
-      status: 'DELIVERED',
+      status: 'SENT',
       timestamp: new Date(),
     };
   }
 
-  verifyWebhook(headers: Record<string, string>, rawBody: Buffer | string): boolean {
+  verifyWebhook(_headers: Record<string, string>, _rawBody: Buffer | string): boolean {
     return true;
   }
 
-  parseWebhookPayload(payload: any): NormalizedWebhookEvent[] {
+  parseWebhookPayload(_payload: any): NormalizedWebhookEvent[] {
     return [];
   }
 }

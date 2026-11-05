@@ -272,65 +272,73 @@ export const DeliveryReportsView: React.FC<DeliveryReportsViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredMessages.map((msg) => {
-                let badgeClass = "bg-slate-100 text-slate-700";
-                let Icon = Clock;
+              {filteredMessages.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-12 text-center text-sm text-slate-400">
+                    No campaign messages dispatched yet. Pair a WhatsApp account and launch a campaign to track real-time delivery reports.
+                  </td>
+                </tr>
+              ) : (
+                filteredMessages.map((msg) => {
+                  let badgeClass = "bg-slate-100 text-slate-700";
+                  let Icon = Clock;
 
-                if (msg.status === "READ") {
-                  badgeClass =
-                    "bg-teal-50 text-teal-700 border border-teal-200";
-                  Icon = CheckCheck;
-                } else if (msg.status === "DELIVERED") {
-                  badgeClass =
-                    "bg-emerald-50 text-emerald-700 border border-emerald-200";
-                  Icon = Check;
-                } else if (msg.status === "SENT") {
-                  badgeClass =
-                    "bg-indigo-50 text-indigo-700 border border-indigo-200";
-                  Icon = Send;
-                } else if (msg.status === "FAILED") {
-                  badgeClass =
-                    "bg-rose-50 text-rose-700 border border-rose-200";
-                  Icon = AlertCircle;
-                }
+                  if (msg.status === "READ") {
+                    badgeClass =
+                      "bg-teal-50 text-teal-700 border border-teal-200";
+                    Icon = CheckCheck;
+                  } else if (msg.status === "DELIVERED") {
+                    badgeClass =
+                      "bg-emerald-50 text-emerald-700 border border-emerald-200";
+                    Icon = Check;
+                  } else if (msg.status === "SENT") {
+                    badgeClass =
+                      "bg-indigo-50 text-indigo-700 border border-indigo-200";
+                    Icon = Send;
+                  } else if (msg.status === "FAILED") {
+                    badgeClass =
+                      "bg-rose-50 text-rose-700 border border-rose-200";
+                    Icon = AlertCircle;
+                  }
 
-                return (
-                  <tr
-                    key={msg.id}
-                    className="hover:bg-slate-50/80 transition-colors"
-                  >
-                    <td className="px-6 py-3.5 font-medium text-slate-900">
-                      {msg.contactName}
-                    </td>
-                    <td className="px-6 py-3.5 font-mono text-xs text-slate-600">
-                      {msg.phoneNumber}
-                    </td>
-                    <td className="px-6 py-3.5">
-                      <span
-                        className={`inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full font-bold ${badgeClass}`}
-                      >
-                        <Icon className="w-3.5 h-3.5" />
-                        {msg.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-3.5 font-mono text-[11px] text-slate-500 max-w-xs truncate">
-                      {msg.providerMessageId || "Pending Queue..."}
-                    </td>
-                    <td className="px-6 py-3.5 font-semibold text-slate-700">
-                      ₹{msg.costINR}
-                    </td>
-                    <td className="px-6 py-3.5 text-right text-xs text-slate-500">
-                      {msg.readAt
-                        ? `Read at ${msg.readAt}`
-                        : msg.deliveredAt
-                          ? `Delivered at ${msg.deliveredAt}`
-                          : msg.sentAt
-                            ? `Sent at ${msg.sentAt}`
-                            : "Queued"}
-                    </td>
-                  </tr>
-                );
-              })}
+                  return (
+                    <tr
+                      key={msg.id}
+                      className="hover:bg-slate-50/80 transition-colors"
+                    >
+                      <td className="px-6 py-3.5 font-medium text-slate-900">
+                        {msg.contactName}
+                      </td>
+                      <td className="px-6 py-3.5 font-mono text-xs text-slate-600">
+                        {msg.phoneNumber}
+                      </td>
+                      <td className="px-6 py-3.5">
+                        <span
+                          className={`inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full font-bold ${badgeClass}`}
+                        >
+                          <Icon className="w-3.5 h-3.5" />
+                          {msg.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3.5 font-mono text-[11px] text-slate-500 max-w-xs truncate">
+                        {msg.providerMessageId || "Pending Queue..."}
+                      </td>
+                      <td className="px-6 py-3.5 font-semibold text-slate-700">
+                        ₹{msg.costINR}
+                      </td>
+                      <td className="px-6 py-3.5 text-right text-xs text-slate-500">
+                        {msg.readAt
+                          ? `Read at ${msg.readAt}`
+                          : msg.deliveredAt
+                            ? `Delivered at ${msg.deliveredAt}`
+                            : msg.sentAt
+                              ? `Sent at ${msg.sentAt}`
+                              : "Queued"}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
