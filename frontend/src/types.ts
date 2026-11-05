@@ -17,6 +17,9 @@ export interface VirtualNumber {
   sessionStatus: 'CONNECTED' | 'DISCONNECTED' | 'PAIRING';
   dailyLimit: number;
   dailySentCount: number;
+  healthScore?: number;
+  warmupStage?: 'UNWARMED' | 'WARMING' | 'WARMED_READY';
+  proxyDisplay?: string;
   monthlyRentalINR: string;
   capabilities: {
     voice: boolean;
@@ -104,5 +107,13 @@ export interface WalletData {
   reservedINR: string;
   availableINR: string;
   transactions: WalletTransaction[];
+}
+
+export interface WarmupLogEntry {
+  id: string;
+  fromNumber: string;
+  toNumber: string;
+  snippet: string;
+  timestamp: string;
 }
 

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Campaign, MessageLog } from '../types';
+import React, { useState } from "react";
+import { Campaign, MessageLog } from "../types";
 import {
   BarChart3,
   CheckCheck,
@@ -14,7 +14,7 @@ import {
   ShieldCheck,
   Phone,
   Layers,
-} from 'lucide-react';
+} from "lucide-react";
 
 interface DeliveryReportsViewProps {
   campaigns: Campaign[];
@@ -30,29 +30,44 @@ export const DeliveryReportsView: React.FC<DeliveryReportsViewProps> = ({
   onResumeCampaign,
 }) => {
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>(
-    campaigns[0]?.id || '',
+    campaigns[0]?.id || "",
   );
-  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  const [statusFilter, setStatusFilter] = useState<string>("ALL");
 
-  const activeCampaign = campaigns.find((c) => c.id === selectedCampaignId) || campaigns[0];
+  const activeCampaign =
+    campaigns.find((c) => c.id === selectedCampaignId) || campaigns[0];
 
   const campaignMessages = activeCampaign
     ? messages.filter((m) => m.campaignId === activeCampaign.id)
     : messages;
 
-  const filteredMessages = statusFilter === 'ALL'
-    ? campaignMessages
-    : campaignMessages.filter((m) => m.status === statusFilter);
+  const filteredMessages =
+    statusFilter === "ALL"
+      ? campaignMessages
+      : campaignMessages.filter((m) => m.status === statusFilter);
 
   // Overall aggregates
-  const totalSent = activeCampaign ? activeCampaign.sentCount : messages.filter((m) => m.status !== 'QUEUED').length;
-  const totalDelivered = activeCampaign ? activeCampaign.deliveredCount : messages.filter((m) => m.status === 'DELIVERED' || m.status === 'READ').length;
-  const totalRead = activeCampaign ? activeCampaign.readCount : messages.filter((m) => m.status === 'READ').length;
-  const totalFailed = activeCampaign ? activeCampaign.failedCount : messages.filter((m) => m.status === 'FAILED').length;
-  const totalTarget = activeCampaign ? activeCampaign.totalContacts : messages.length;
+  const totalSent = activeCampaign
+    ? activeCampaign.sentCount
+    : messages.filter((m) => m.status !== "QUEUED").length;
+  const totalDelivered = activeCampaign
+    ? activeCampaign.deliveredCount
+    : messages.filter((m) => m.status === "DELIVERED" || m.status === "READ")
+        .length;
+  const totalRead = activeCampaign
+    ? activeCampaign.readCount
+    : messages.filter((m) => m.status === "READ").length;
+  const totalFailed = activeCampaign
+    ? activeCampaign.failedCount
+    : messages.filter((m) => m.status === "FAILED").length;
+  const totalTarget = activeCampaign
+    ? activeCampaign.totalContacts
+    : messages.length;
 
-  const deliveryRate = totalTarget > 0 ? Math.round((totalDelivered / totalTarget) * 100) : 0;
-  const readRate = totalDelivered > 0 ? Math.round((totalRead / totalDelivered) * 100) : 0;
+  const deliveryRate =
+    totalTarget > 0 ? Math.round((totalDelivered / totalTarget) * 100) : 0;
+  const readRate =
+    totalDelivered > 0 ? Math.round((totalRead / totalDelivered) * 100) : 0;
 
   return (
     <div className="space-y-6">
@@ -64,14 +79,17 @@ export const DeliveryReportsView: React.FC<DeliveryReportsViewProps> = ({
             Real-Time Campaign Delivery Reports
           </h2>
           <p className="text-sm text-slate-500 mt-1">
-            Track live dispatch status, delivery confirmation receipts, and read status from Virtual Number Gateways.
+            Track live dispatch status, delivery confirmation receipts, and read
+            status from Virtual Number Gateways.
           </p>
         </div>
 
         {/* Campaign Selector dropdown */}
         {campaigns.length > 0 && (
           <div className="flex items-center space-x-3">
-            <span className="text-xs font-semibold text-slate-500">Selected Campaign:</span>
+            <span className="text-xs font-semibold text-slate-500">
+              Selected Campaign:
+            </span>
             <select
               value={selectedCampaignId}
               onChange={(e) => setSelectedCampaignId(e.target.value)}
@@ -95,8 +113,12 @@ export const DeliveryReportsView: React.FC<DeliveryReportsViewProps> = ({
             <span>Target Contacts</span>
             <Layers className="w-4 h-4 text-slate-400" />
           </div>
-          <div className="text-2xl font-bold text-slate-900 mt-2">{totalTarget}</div>
-          <div className="text-xs text-slate-500 mt-1">Escrow: ₹{activeCampaign?.reservedINR || '0.00'}</div>
+          <div className="text-2xl font-bold text-slate-900 mt-2">
+            {totalTarget}
+          </div>
+          <div className="text-xs text-slate-500 mt-1">
+            Escrow: ₹{activeCampaign?.reservedINR || "0.00"}
+          </div>
         </div>
 
         {/* Sent / Dispatched */}
@@ -105,7 +127,9 @@ export const DeliveryReportsView: React.FC<DeliveryReportsViewProps> = ({
             <span>Dispatched</span>
             <Send className="w-4 h-4" />
           </div>
-          <div className="text-2xl font-bold text-indigo-950 mt-2">{totalSent}</div>
+          <div className="text-2xl font-bold text-indigo-950 mt-2">
+            {totalSent}
+          </div>
           <div className="text-xs text-indigo-600 font-medium mt-1">Queued</div>
         </div>
 
@@ -115,8 +139,12 @@ export const DeliveryReportsView: React.FC<DeliveryReportsViewProps> = ({
             <span>Delivered</span>
             <Check className="w-4 h-4" />
           </div>
-          <div className="text-2xl font-bold text-emerald-950 mt-2">{totalDelivered}</div>
-          <div className="text-xs text-emerald-600 font-medium mt-1">{deliveryRate}% delivery rate</div>
+          <div className="text-2xl font-bold text-emerald-950 mt-2">
+            {totalDelivered}
+          </div>
+          <div className="text-xs text-emerald-600 font-medium mt-1">
+            {deliveryRate}% delivery rate
+          </div>
         </div>
 
         {/* Read Receipts */}
@@ -125,8 +153,12 @@ export const DeliveryReportsView: React.FC<DeliveryReportsViewProps> = ({
             <span>Read / Viewed</span>
             <CheckCheck className="w-4 h-4 text-[#25D366]" />
           </div>
-          <div className="text-2xl font-bold text-slate-900 mt-2">{totalRead}</div>
-          <div className="text-xs text-teal-700 font-medium mt-1">{readRate}% engagement</div>
+          <div className="text-2xl font-bold text-slate-900 mt-2">
+            {totalRead}
+          </div>
+          <div className="text-xs text-teal-700 font-medium mt-1">
+            {readRate}% engagement
+          </div>
         </div>
 
         {/* Failed */}
@@ -135,9 +167,11 @@ export const DeliveryReportsView: React.FC<DeliveryReportsViewProps> = ({
             <span>Failed / Bounced</span>
             <AlertCircle className="w-4 h-4" />
           </div>
-          <div className="text-2xl font-bold text-rose-950 mt-2">{totalFailed}</div>
+          <div className="text-2xl font-bold text-rose-950 mt-2">
+            {totalFailed}
+          </div>
           <div className="text-xs text-rose-600 font-medium mt-1">
-            {totalFailed > 0 ? 'Non-WhatsApp or opted out' : 'Zero failures'}
+            {totalFailed > 0 ? "Non-WhatsApp or opted out" : "Zero failures"}
           </div>
         </div>
       </div>
@@ -149,23 +183,29 @@ export const DeliveryReportsView: React.FC<DeliveryReportsViewProps> = ({
             <div className="flex items-center space-x-3">
               <span
                 className={`text-xs px-2.5 py-1 rounded-full font-bold uppercase ${
-                  activeCampaign.status === 'COMPLETED'
-                    ? 'bg-emerald-100 text-emerald-800'
-                    : activeCampaign.status === 'SENDING'
-                    ? 'bg-blue-100 text-blue-800 animate-pulse'
-                    : 'bg-amber-100 text-amber-800'
+                  activeCampaign.status === "COMPLETED"
+                    ? "bg-emerald-100 text-emerald-800"
+                    : activeCampaign.status === "SENDING"
+                      ? "bg-blue-100 text-blue-800 animate-pulse"
+                      : "bg-amber-100 text-amber-800"
                 }`}
               >
                 ● {activeCampaign.status}
               </span>
-              <span className="text-sm font-bold text-slate-800">{activeCampaign.name}</span>
+              <span className="text-sm font-bold text-slate-800">
+                {activeCampaign.name}
+              </span>
               <span className="text-xs text-slate-500 font-mono">
                 via {activeCampaign.senderNumber}
               </span>
             </div>
 
             <div className="text-xs text-slate-500">
-              Dispatched via <span className="font-semibold text-slate-700">{activeCampaign.senderNumber}</span> • Debited: ₹{activeCampaign.actualCostINR}
+              Dispatched via{" "}
+              <span className="font-semibold text-slate-700">
+                {activeCampaign.senderNumber}
+              </span>{" "}
+              • Debited: ₹{activeCampaign.actualCostINR}
             </div>
           </div>
 
@@ -177,7 +217,9 @@ export const DeliveryReportsView: React.FC<DeliveryReportsViewProps> = ({
               title={`Delivered: ${deliveryRate}%`}
             />
             <div
-              style={{ width: `${Math.max(0, (totalSent - totalDelivered) / (totalTarget || 1) * 100)}%` }}
+              style={{
+                width: `${Math.max(0, ((totalSent - totalDelivered) / (totalTarget || 1)) * 100)}%`,
+              }}
               className="bg-indigo-400 transition-all duration-500"
               title="Dispatched / In-Transit"
             />
@@ -192,24 +234,28 @@ export const DeliveryReportsView: React.FC<DeliveryReportsViewProps> = ({
             <h3 className="text-sm font-bold text-slate-800">
               Dispatch Logs ({filteredMessages.length})
             </h3>
-            <span className="text-xs text-slate-500">• Auto-refreshes with Webhook delivery receipts</span>
+            <span className="text-xs text-slate-500">
+              • Auto-refreshes with Webhook delivery receipts
+            </span>
           </div>
 
           {/* Filter Pills */}
           <div className="flex items-center space-x-1.5 text-xs">
-            {['ALL', 'DELIVERED', 'READ', 'SENT', 'QUEUED', 'FAILED'].map((st) => (
-              <button
-                key={st}
-                onClick={() => setStatusFilter(st)}
-                className={`px-2.5 py-1 rounded-md font-semibold transition ${
-                  statusFilter === st
-                    ? 'bg-[#128C7E] text-white'
-                    : 'bg-slate-200/70 text-slate-600 hover:bg-slate-300'
-                }`}
-              >
-                {st}
-              </button>
-            ))}
+            {["ALL", "DELIVERED", "READ", "SENT", "QUEUED", "FAILED"].map(
+              (st) => (
+                <button
+                  key={st}
+                  onClick={() => setStatusFilter(st)}
+                  className={`px-2.5 py-1 rounded-md font-semibold transition ${
+                    statusFilter === st
+                      ? "bg-[#128C7E] text-white"
+                      : "bg-slate-200/70 text-slate-600 hover:bg-slate-300"
+                  }`}
+                >
+                  {st}
+                </button>
+              ),
+            )}
           </div>
         </div>
 
@@ -227,26 +273,35 @@ export const DeliveryReportsView: React.FC<DeliveryReportsViewProps> = ({
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredMessages.map((msg) => {
-                let badgeClass = 'bg-slate-100 text-slate-700';
+                let badgeClass = "bg-slate-100 text-slate-700";
                 let Icon = Clock;
 
-                if (msg.status === 'READ') {
-                  badgeClass = 'bg-teal-50 text-teal-700 border border-teal-200';
+                if (msg.status === "READ") {
+                  badgeClass =
+                    "bg-teal-50 text-teal-700 border border-teal-200";
                   Icon = CheckCheck;
-                } else if (msg.status === 'DELIVERED') {
-                  badgeClass = 'bg-emerald-50 text-emerald-700 border border-emerald-200';
+                } else if (msg.status === "DELIVERED") {
+                  badgeClass =
+                    "bg-emerald-50 text-emerald-700 border border-emerald-200";
                   Icon = Check;
-                } else if (msg.status === 'SENT') {
-                  badgeClass = 'bg-indigo-50 text-indigo-700 border border-indigo-200';
+                } else if (msg.status === "SENT") {
+                  badgeClass =
+                    "bg-indigo-50 text-indigo-700 border border-indigo-200";
                   Icon = Send;
-                } else if (msg.status === 'FAILED') {
-                  badgeClass = 'bg-rose-50 text-rose-700 border border-rose-200';
+                } else if (msg.status === "FAILED") {
+                  badgeClass =
+                    "bg-rose-50 text-rose-700 border border-rose-200";
                   Icon = AlertCircle;
                 }
 
                 return (
-                  <tr key={msg.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="px-6 py-3.5 font-medium text-slate-900">{msg.contactName}</td>
+                  <tr
+                    key={msg.id}
+                    className="hover:bg-slate-50/80 transition-colors"
+                  >
+                    <td className="px-6 py-3.5 font-medium text-slate-900">
+                      {msg.contactName}
+                    </td>
                     <td className="px-6 py-3.5 font-mono text-xs text-slate-600">
                       {msg.phoneNumber}
                     </td>
@@ -259,17 +314,19 @@ export const DeliveryReportsView: React.FC<DeliveryReportsViewProps> = ({
                       </span>
                     </td>
                     <td className="px-6 py-3.5 font-mono text-[11px] text-slate-500 max-w-xs truncate">
-                      {msg.providerMessageId || 'Pending Queue...'}
+                      {msg.providerMessageId || "Pending Queue..."}
                     </td>
-                    <td className="px-6 py-3.5 font-semibold text-slate-700">₹{msg.costINR}</td>
+                    <td className="px-6 py-3.5 font-semibold text-slate-700">
+                      ₹{msg.costINR}
+                    </td>
                     <td className="px-6 py-3.5 text-right text-xs text-slate-500">
                       {msg.readAt
                         ? `Read at ${msg.readAt}`
                         : msg.deliveredAt
-                        ? `Delivered at ${msg.deliveredAt}`
-                        : msg.sentAt
-                        ? `Sent at ${msg.sentAt}`
-                        : 'Queued'}
+                          ? `Delivered at ${msg.deliveredAt}`
+                          : msg.sentAt
+                            ? `Sent at ${msg.sentAt}`
+                            : "Queued"}
                     </td>
                   </tr>
                 );
@@ -281,4 +338,3 @@ export const DeliveryReportsView: React.FC<DeliveryReportsViewProps> = ({
     </div>
   );
 };
-

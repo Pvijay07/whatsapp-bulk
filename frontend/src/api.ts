@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Contact, VirtualNumber, WhatsAppAccount, MessageTemplate, Campaign, MessageLog, WalletData } from './types';
+import { Contact, VirtualNumber, WhatsAppAccount, MessageTemplate, Campaign, MessageLog, WalletData, WarmupLogEntry } from './types';
 import {
   initialContacts,
   initialNumbers,
@@ -8,6 +8,7 @@ import {
   initialCampaigns,
   initialMessages,
   initialWallet,
+  initialWarmupLogs,
 } from './store';
 
 const API_BASE_URL = '/api/v1';
@@ -34,6 +35,7 @@ const STORAGE_KEYS = {
   CAMPAIGNS: 'wa_saas_campaigns_v1',
   MESSAGES: 'wa_saas_messages_v1',
   WALLET: 'wa_saas_wallet_v1',
+  WARMUP_LOGS: 'wa_saas_warmup_logs_v1',
   TOKEN: 'wa_saas_token',
 };
 
@@ -255,6 +257,96 @@ export class DynamicStoreManager {
     };
     saveToStorage(STORAGE_KEYS.WALLET, updated);
     return updated;
+  }
+
+  // Automated 1-Click OTP Number Provisioning (Saasyto / 5SIM / SMS-Activate workflow)
+  async autoProvisionVirtualNumber(country = 'india'): Promise<{
+    success: boolean;
+    phoneNumber: string;
+    orderId: string;
+    otpCode?: string;
+    costINR: number;
+    proxyDisplay?: string;
+  }> {
+    if (this.isOnline) {
+      try {
+        const res = await apiClient.post('/virtual-pool/auto-provision', { country });
+        if (res.data?.success) {
+          return res.data;
+        }
+      } catch (e) {
+        console.warn('Backend auto-provisioning call failed; executing automated simulator', e);
+      }
+    }
+
+    // High fidelity automated simulation
+    const randomSuffix = Math.floor(10000000 + Math.random() * 90000000);
+    const mockPhoneNumber = `+9198${randomSuffix}`;
+    const mockOrderId = `ORD-${Date.now().toString(36).toUpperCase()}`;
+    const mockOtp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    return {
+      success: true,
+      phoneNumber: mockPhoneNumber,
+      orderId: mockOrderId,
+      otpCode: mockOtp,
+      costINR: 10.00,
+      proxyDisplay: 'Jio 4G Cellular Proxy (Bangalore)',
+    };
+  }
+
+  // Get Account Warmup Logs
+  async getWarmupLogs(): Promise<WarmupLogEntry[]> {
+    if (this.isOnline) {
+      try {
+        const res = await apiClient.get('/virtual-pool/warmup/logs');
+        if (Array.isArray(res.data)) {
+          saveToStorage(STORAGE_KEYS.WARMUP_LOGS, res.data);
+          return res.data;
+        }
+      } catch (e) {
+        console.warn('Backend warmup logs fetch failed; using local storage', e);
+      }
+    }
+    return loadFromStorage<WarmupLogEntry[]>(STORAGE_KEYS.WARMUP_LOGS, initialWarmupLogs);
+  }
+
+  // Trigger Warmup Cycle Round
+  async triggerWarmupRound(): Promise<{ success: boolean; entry?: WarmupLogEntry }> {
+    if (this.isOnline) {
+      try {
+        const res = await apiClient.post('/virtual-pool/warmup/trigger');
+        if (res.data?.entry) {
+          const current = loadFromStorage<WarmupLogEntry[]>(STORAGE_KEYS.WARMUP_LOGS, initialWarmupLogs);
+          const updated = [res.data.entry, ...current.slice(0, 49)];
+          saveToStorage(STORAGE_KEYS.WARMUP_LOGS, updated);
+          return res.data;
+        }
+      } catch (e) {
+        console.warn('Backend warmup trigger failed; generating local cycle', e);
+      }
+    }
+
+    const currentLogs = loadFromStorage<WarmupLogEntry[]>(STORAGE_KEYS.WARMUP_LOGS, initialWarmupLogs);
+    const snippets = [
+      'Hey, got your message! Looking forward to reviewing the proposal.',
+      'Great, I will check and get back to you shortly.',
+      'Thanks for sharing the details! 👍',
+      'Please send the catalog when ready.',
+      'Sure, let us schedule a quick call tomorrow morning.',
+    ];
+    const snippet = snippets[Math.floor(Math.random() * snippets.length)];
+    const newEntry: WarmupLogEntry = {
+      id: `wl-${Date.now()}`,
+      fromNumber: '+918045678901',
+      toNumber: '+919876599999',
+      snippet,
+      timestamp: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    const updated = [newEntry, ...currentLogs.slice(0, 49)];
+    saveToStorage(STORAGE_KEYS.WARMUP_LOGS, updated);
+    return { success: true, entry: newEntry };
   }
 }
 

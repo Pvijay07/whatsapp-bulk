@@ -16,3 +16,4 @@ export class SessionController {
     return this.baileysService.logout();
   }
 }
+

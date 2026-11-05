@@ -6,6 +6,7 @@ import {
   MessageStatusResult,
   NormalizedWebhookEvent,
 } from './messaging-provider.interface';
+import { VirtualPoolManagerService } from './virtual-pool-manager.service';
 import { BaileysSessionService } from './baileys-session.service';
 
 @Injectable()
@@ -13,55 +14,45 @@ export class VirtualGatewayAdapter implements MessagingProvider {
   readonly providerName = 'virtual_gateway';
   private readonly logger = new Logger(VirtualGatewayAdapter.name);
 
-  constructor(private readonly baileysService: BaileysSessionService) {}
+  constructor(
+    private readonly poolManager: VirtualPoolManagerService,
+    private readonly baileysService: BaileysSessionService,
+  ) {}
 
   /**
-   * Dispatches via live Multi-Device WebSocket session (Real WhatsApp delivery)
+   * Dispatches via Saasyto-style Multi-Number Virtual Pool with Round-Robin load balancing
    */
   async sendTemplateMessage(
     request: SendTemplateMessageRequest,
   ): Promise<SendMessageResult> {
-    // Extract actual message text
     const bodyText =
       request.components?.find((c) => c.type === 'body')?.parameters?.[0]?.text ||
-      `Direct WhatsApp Broadcast message to ${request.recipientPhoneNumber}`;
+      `Direct WhatsApp message to ${request.recipientPhoneNumber}`;
 
-    const status = this.baileysService.getSessionStatus();
-
-    // 1. If real multi-device session is ONLINE, transmit real message to WhatsApp!
-    if (status.isOnline) {
-      this.logger.log(
-        `[Real Multi-Device Session Active] Dispatching real message to ${request.recipientPhoneNumber}`,
-      );
-      const res = await this.baileysService.sendRealMessage(request.recipientPhoneNumber, bodyText);
-
-      if (res.success) {
-        return {
-          providerMessageId: res.messageId,
-          status: 'SENT',
-          rawResponse: { deliveredOverLiveSocket: true, id: res.messageId },
-        };
-      } else {
-        return {
-          providerMessageId: '',
-          status: 'FAILED',
-          errorCode: 'REAL_DELIVERY_FAILED',
-          errorMessage: res.error,
-        };
-      }
-    }
-
-    // 2. If no device is paired yet, log instruction and generate simulated ID
-    const virtualMessageId = `VMSG-${request.recipientPhoneNumber.replace('+', '')}-${Date.now().toString(36).toUpperCase()}`;
-    this.logger.warn(
-      `[Device not paired] Session state is "${status.state}". To send REAL messages that ring on physical phones, scan the QR code in Virtual Numbers tab. Simulated ID: ${virtualMessageId}`,
+    // 1. Dispatch through the Virtual Number Pool Manager (Round-Robin)
+    const result = await this.poolManager.dispatchPoolMessage(
+      request.recipientPhoneNumber,
+      bodyText,
     );
 
-    return {
-      providerMessageId: virtualMessageId,
-      status: 'SENT',
-      rawResponse: { isSimulated: true, id: virtualMessageId },
-    };
+    if (result.success) {
+      return {
+        providerMessageId: result.messageId,
+        status: 'SENT',
+        rawResponse: {
+          dispatchedVia: result.senderNumber,
+          isPoolRotation: true,
+          id: result.messageId,
+        },
+      };
+    } else {
+      return {
+        providerMessageId: '',
+        status: 'FAILED',
+        errorCode: 'POOL_DISPATCH_ERROR',
+        errorMessage: result.error,
+      };
+    }
   }
 
   async getMessageStatus(providerMessageId: string): Promise<MessageStatusResult> {

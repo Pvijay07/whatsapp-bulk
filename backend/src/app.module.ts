@@ -6,7 +6,10 @@ import { PassportModule } from '@nestjs/passport';
 // Database & Common
 import { PrismaService } from './database/prisma.service';
 
-// Adapters
+// Adapters & Virtual Pool Engine
+import { VirtualPoolManagerService } from './providers/messaging/virtual-pool-manager.service';
+import { OtpRentalService } from './providers/numbers/otp-rental.service';
+import { AccountWarmerService } from './providers/messaging/account-warmer.service';
 import { BaileysSessionService } from './providers/messaging/baileys-session.service';
 import { VirtualGatewayAdapter } from './providers/messaging/virtual-gateway.adapter';
 import { MockMessagingAdapter } from './providers/messaging/mock-messaging.adapter';
@@ -19,6 +22,7 @@ import { AuthController } from './modules/auth/auth.controller';
 import { JwtStrategy } from './modules/auth/jwt.strategy';
 
 import { SessionController } from './modules/session/session.controller';
+import { VirtualPoolController } from './modules/virtual-pool/virtual-pool.controller';
 
 import { WalletService } from './modules/wallet/wallet.service';
 import { WalletController } from './modules/wallet/wallet.controller';
@@ -53,6 +57,7 @@ import { WebhooksController } from './modules/webhooks/webhooks.controller';
   controllers: [
     AuthController,
     SessionController,
+    VirtualPoolController,
     WalletController,
     ContactsController,
     CampaignsController,
@@ -72,6 +77,9 @@ import { WebhooksController } from './modules/webhooks/webhooks.controller';
     TemplatesService,
     VirtualNumbersService,
     WhatsAppAccountsService,
+    VirtualPoolManagerService,
+    OtpRentalService,
+    AccountWarmerService,
     BaileysSessionService,
     VirtualGatewayAdapter,
     MockMessagingAdapter,

@@ -2,6 +2,7 @@ import { Worker, Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import { PrismaClient, MessageStatus, CampaignStatus } from '@prisma/client';
 import { redisConnection, MESSAGING_QUEUE_NAME, SendMessageJobData } from './messaging.queue';
+import { VirtualPoolManagerService } from '../providers/messaging/virtual-pool-manager.service';
 import { BaileysSessionService } from '../providers/messaging/baileys-session.service';
 import { VirtualGatewayAdapter } from '../providers/messaging/virtual-gateway.adapter';
 import { MockMessagingAdapter } from '../providers/messaging/mock-messaging.adapter';
@@ -9,6 +10,7 @@ import { MessagingProvider } from '../providers/messaging/messaging-provider.int
 
 const logger = new Logger('MessagingWorker');
 const prisma = new PrismaClient();
+const poolManager = new VirtualPoolManagerService();
 const baileysService = new BaileysSessionService();
 
 // Resolve active provider adapter: Virtual Number Gateway by default
@@ -17,7 +19,7 @@ function getProvider(): MessagingProvider {
   if (providerName === 'mock') {
     return new MockMessagingAdapter();
   }
-  return new VirtualGatewayAdapter(baileysService);
+  return new VirtualGatewayAdapter(poolManager, baileysService);
 }
 
 const provider = getProvider();

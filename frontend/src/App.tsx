@@ -13,8 +13,9 @@ import {
   initialWallet,
   initialContacts,
   initialAutoResponders,
+  initialWarmupLogs,
 } from './store';
-import { Contact, VirtualNumber, Campaign, MessageLog, WalletData, MessageTemplate, AutoResponderRule } from './types';
+import { Contact, VirtualNumber, Campaign, MessageLog, WalletData, MessageTemplate, AutoResponderRule, WarmupLogEntry } from './types';
 import { Navbar } from './components/Navbar';
 import { ContactsView } from './components/ContactsView';
 import { WhatsAppModal } from './components/WhatsAppModal';
@@ -48,6 +49,9 @@ export const App: React.FC = () => {
   );
   const [wallet, setWallet] = useState<WalletData>(() =>
     loadFromStorage('wa_saas_wallet_v1', initialWallet),
+  );
+  const [warmupLogs, setWarmupLogs] = useState<WarmupLogEntry[]>(() =>
+    loadFromStorage('wa_saas_warmup_logs_v1', initialWarmupLogs),
   );
 
   const [isLiveSyncing, setIsLiveSyncing] = useState(false);
@@ -88,6 +92,10 @@ export const App: React.FC = () => {
   useEffect(() => {
     saveToStorage('wa_saas_autoresp_v1', autoResponders);
   }, [autoResponders]);
+
+  useEffect(() => {
+    saveToStorage('wa_saas_warmup_logs_v1', warmupLogs);
+  }, [warmupLogs]);
 
   // Initial check against backend
   useEffect(() => {
@@ -325,6 +333,65 @@ export const App: React.FC = () => {
     showToast(`Number ${num.phoneNumber} provisioned via ${num.provider}!`);
   };
 
+  // 1-Click Automated Virtual Number Provisioning Handler
+  const handleAutoProvisionNumber = (res: {
+    phoneNumber: string;
+    orderId: string;
+    otpCode?: string;
+    costINR: number;
+    proxyDisplay?: string;
+  }) => {
+    const newNum: VirtualNumber = {
+      id: `num-${Date.now()}`,
+      phoneNumber: res.phoneNumber,
+      provider: '5SIM / SMS-Activate Gateway',
+      type: 'MOBILE',
+      status: 'ACTIVE',
+      sessionStatus: 'CONNECTED',
+      dailyLimit: 500,
+      dailySentCount: 0,
+      healthScore: 100,
+      warmupStage: 'WARMING',
+      proxyDisplay: res.proxyDisplay || 'Airtel 4G Mobile Gateway (India)',
+      monthlyRentalINR: '0.00',
+      capabilities: { voice: false, sms: true, virtualMessaging: true },
+      region: 'India Cellular Pool',
+    };
+
+    setVirtualNumbers((prev) => [newNum, ...prev]);
+
+    // Deduct acquisition fee from prepaid wallet
+    const newBal = (parseFloat(wallet.balanceINR) - res.costINR).toFixed(2);
+    setWallet((prev) => ({
+      ...prev,
+      balanceINR: newBal,
+      availableINR: newBal,
+      transactions: [
+        {
+          id: `tx-prov-${Date.now()}`,
+          transactionType: 'DEBIT',
+          amountINR: `-${res.costINR.toFixed(2)}`,
+          balanceAfterINR: newBal,
+          idempotencyKey: `auto_prov_${res.orderId}_${Date.now()}`,
+          reason: `1-Click Virtual Number Provisioning: ${res.phoneNumber} (Order ${res.orderId})`,
+          createdAt: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+        },
+        ...prev.transactions,
+      ],
+    }));
+
+    showToast(`Auto-provisioned ${res.phoneNumber}! Joined active pool.`);
+  };
+
+  // Automated Account Warmer trigger
+  const handleTriggerWarmup = async () => {
+    const res = await dynamicStore.triggerWarmupRound();
+    if (res.entry) {
+      setWarmupLogs((prev) => [res.entry!, ...prev.slice(0, 49)]);
+      showToast(`Account Warmer: Executed dialogue exchange between pool numbers!`);
+    }
+  };
+
   // Recharge wallet
   const handleTopUp = async (amountINR: number) => {
     const updated = await dynamicStore.topUpWallet(amountINR);
@@ -474,6 +541,9 @@ export const App: React.FC = () => {
           <VirtualNumbersView
             numbers={virtualNumbers}
             onPurchaseNumber={handlePurchaseNumber}
+            onAutoProvisionNumber={handleAutoProvisionNumber}
+            warmupLogs={warmupLogs}
+            onTriggerWarmup={handleTriggerWarmup}
             walletBalanceINR={wallet.availableINR}
           />
         )}

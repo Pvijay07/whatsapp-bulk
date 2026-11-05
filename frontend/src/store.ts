@@ -1,4 +1,4 @@
-import { Contact, VirtualNumber, WhatsAppAccount, MessageTemplate, Campaign, MessageLog, WalletData } from './types';
+import { Contact, VirtualNumber, WhatsAppAccount, MessageTemplate, Campaign, MessageLog, WalletData, WarmupLogEntry } from './types';
 
 export const initialContacts: Contact[] = [
   {
@@ -58,6 +58,9 @@ export const initialNumbers: VirtualNumber[] = [
     sessionStatus: 'CONNECTED',
     dailyLimit: 500,
     dailySentCount: 124,
+    healthScore: 98,
+    warmupStage: 'WARMED_READY',
+    proxyDisplay: 'Airtel 4G Cellular (Bangalore)',
     monthlyRentalINR: '599.00',
     capabilities: {
       voice: true,
@@ -75,6 +78,9 @@ export const initialNumbers: VirtualNumber[] = [
     sessionStatus: 'CONNECTED',
     dailyLimit: 500,
     dailySentCount: 88,
+    healthScore: 96,
+    warmupStage: 'WARMED_READY',
+    proxyDisplay: 'Jio 4G Cellular (Mumbai)',
     monthlyRentalINR: '799.00',
     capabilities: {
       voice: true,
@@ -92,6 +98,9 @@ export const initialNumbers: VirtualNumber[] = [
     sessionStatus: 'CONNECTED',
     dailyLimit: 500,
     dailySentCount: 45,
+    healthScore: 94,
+    warmupStage: 'WARMED_READY',
+    proxyDisplay: 'Vodafone 4G Cellular (Delhi)',
     monthlyRentalINR: '799.00',
     capabilities: {
       voice: true,
@@ -277,4 +286,29 @@ export const initialWallet: WalletData = {
     },
   ],
 };
+
+export const initialWarmupLogs: WarmupLogEntry[] = [
+  {
+    id: 'wl-1',
+    fromNumber: '+918045678901',
+    toNumber: '+919876599999',
+    snippet: 'Hey! Are you available to review the project brief today?',
+    timestamp: '10:15 AM',
+  },
+  {
+    id: 'wl-2',
+    fromNumber: '+919876599999',
+    toNumber: '+918045678901',
+    snippet: 'Yes, looking at it right now. Everything seems on track! 👍',
+    timestamp: '10:17 AM',
+  },
+  {
+    id: 'wl-3',
+    fromNumber: '+919822211333',
+    toNumber: '+918045678901',
+    snippet: 'Received the catalog. Will place the bulk order this afternoon.',
+    timestamp: '10:25 AM',
+  },
+];
+
 
