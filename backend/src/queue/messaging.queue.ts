@@ -1,8 +1,10 @@
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
-import { processSingleMessage } from './messaging.worker';
+import { MESSAGING_QUEUE_NAME, SendMessageJobData } from './messaging.constants';
 
-const redisUrl = process.env.REDIS_URL || 'redis://redis:6379';
+export { MESSAGING_QUEUE_NAME, SendMessageJobData };
+
+const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 
 export const redisConnection = new Redis(redisUrl, {
   maxRetriesPerRequest: null,
@@ -14,11 +16,9 @@ export const redisConnection = new Redis(redisUrl, {
   },
 });
 
-redisConnection.on('error', (err) => {
+redisConnection.on('error', (_err) => {
   // Silent fallback when running locally without standalone Redis
 });
-
-export const MESSAGING_QUEUE_NAME = 'whatsapp-messaging';
 
 export const messagingQueue = new Queue(MESSAGING_QUEUE_NAME, {
   connection: redisConnection,
@@ -33,11 +33,9 @@ export const messagingQueue = new Queue(MESSAGING_QUEUE_NAME, {
   },
 });
 
-export interface SendMessageJobData {
-  campaignId: string;
-  messageId: string;
-  organizationId: string;
-}
+messagingQueue.on('error', (_err) => {
+  // Silent fallback if Redis is unavailable
+});
 
 /**
  * Enqueues a batch of messages for asynchronous campaign dispatching
@@ -63,13 +61,17 @@ export async function enqueueCampaignMessages(
     await messagingQueue.addBulk(jobs);
   } catch (err: any) {
     // If BullMQ/Redis is unavailable, fallback to resilient asynchronous in-process dispatch
-    for (const msgId of messageIds) {
-      setImmediate(async () => {
-        try {
-          await processSingleMessage(campaignId, msgId, organizationId);
-        } catch (e) {}
-      });
+    try {
+      const { processSingleMessage } = await import('./messaging.worker');
+      for (const msgId of messageIds) {
+        setImmediate(async () => {
+          try {
+            await processSingleMessage(campaignId, msgId, organizationId);
+          } catch (e) {}
+        });
+      }
+    } catch (importErr) {
+      console.warn('Fallback message dispatch warning:', importErr);
     }
   }
 }
-

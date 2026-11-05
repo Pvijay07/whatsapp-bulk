@@ -4,7 +4,7 @@ import makeWASocket, {
   useMultiFileAuthState,
   WASocket,
 } from '@whiskeysockets/baileys';
-import QRCode from 'qrcode';
+import * as QRCode from 'qrcode';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -47,7 +47,8 @@ export class BaileysSessionService implements OnModuleInit {
         if (qr) {
           this.sessionState = 'SCAN_QR_REQUIRED';
           try {
-            this.currentQrCodeDataUrl = await QRCode.toDataURL(qr, {
+            const qrLib: any = QRCode?.toDataURL ? QRCode : (QRCode as any)?.default || require('qrcode');
+            this.currentQrCodeDataUrl = await qrLib.toDataURL(qr, {
               margin: 2,
               scale: 6,
               color: { dark: '#075E54', light: '#FFFFFF' },

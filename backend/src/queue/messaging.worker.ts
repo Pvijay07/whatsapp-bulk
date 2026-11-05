@@ -1,7 +1,8 @@
 import { Worker, Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import { PrismaClient, MessageStatus, CampaignStatus } from '@prisma/client';
-import { redisConnection, MESSAGING_QUEUE_NAME, SendMessageJobData } from './messaging.queue';
+import { redisConnection } from './messaging.queue';
+import { MESSAGING_QUEUE_NAME, SendMessageJobData } from './messaging.constants';
 import { VirtualPoolManagerService } from '../providers/messaging/virtual-pool-manager.service';
 import { BaileysSessionService } from '../providers/messaging/baileys-session.service';
 import { VirtualGatewayAdapter } from '../providers/messaging/virtual-gateway.adapter';
@@ -136,7 +137,7 @@ export async function processSingleMessage(
 }
 
 export const messagingWorker = new Worker<SendMessageJobData>(
-  MESSAGING_QUEUE_NAME,
+  MESSAGING_QUEUE_NAME || 'whatsapp-messaging',
   async (job: Job<SendMessageJobData>) => {
     const { campaignId, messageId, organizationId } = job.data;
     await processSingleMessage(campaignId, messageId, organizationId);
@@ -153,5 +154,9 @@ messagingWorker.on('completed', (job) => {
 
 messagingWorker.on('failed', (job, err) => {
   logger.error(`Job ${job?.id} failed with reason: ${err.message}`);
+});
+
+messagingWorker.on('error', (err) => {
+  logger.warn(`Messaging worker note: ${err.message}. Messages will process via resilient dispatch.`);
 });
 

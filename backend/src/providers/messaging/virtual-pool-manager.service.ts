@@ -4,7 +4,7 @@ import makeWASocket, {
   useMultiFileAuthState,
   WASocket,
 } from '@whiskeysockets/baileys';
-import QRCode from 'qrcode';
+import * as QRCode from 'qrcode';
 import * as path from 'path';
 import * as fs from 'fs';
 
