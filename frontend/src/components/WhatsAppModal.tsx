@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { Contact, VirtualNumber, MessageTemplate, WhatsAppAccount } from '../types';
 import {
   Send,
@@ -14,6 +15,7 @@ import {
   Clock,
   Shuffle,
   FileText,
+  Smartphone,
 } from 'lucide-react';
 
 interface WhatsAppModalProps {
@@ -51,11 +53,50 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
   if (!isOpen) return null;
 
   const [dispatchType, setDispatchType] = useState<'MULTI_NUMBER_POOL' | 'DEDICATED_NUMBER'>(
-    'MULTI_NUMBER_POOL',
+    'DEDICATED_NUMBER',
   );
 
+  const [sessionStatus, setSessionStatus] = useState<{
+    isOnline: boolean;
+    connectedNumber: string | null;
+  }>({
+    isOnline: false,
+    connectedNumber: null,
+  });
+
+  useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const res = await axios.get('/api/v1/session/status');
+        if (res.data) {
+          setSessionStatus(res.data);
+          if (res.data.isOnline && res.data.connectedNumber) {
+            setSelectedNumberId('real-linked-session');
+          }
+        }
+      } catch (e) {}
+    };
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
   const [targetType, setTargetType] = useState<'SINGLE' | 'ALL'>(selectedContact ? 'SINGLE' : 'ALL');
-  const [selectedNumberId, setSelectedNumberId] = useState(virtualNumbers[0]?.id || '');
+  const [selectedNumberId, setSelectedNumberId] = useState(
+    virtualNumbers.find((n) => n.id === 'real-linked-session')?.id || virtualNumbers[0]?.id || 'real-linked-session',
+  );
+
+  useEffect(() => {
+    const active = virtualNumbers.find((n) => n.id === 'real-linked-session');
+    if (active) {
+      setSelectedNumberId(active.id);
+    } else if (sessionStatus.isOnline) {
+      setSelectedNumberId('real-linked-session');
+    } else if (virtualNumbers.length > 0 && !selectedNumberId) {
+      setSelectedNumberId(virtualNumbers[0].id);
+    }
+  }, [virtualNumbers, sessionStatus.isOnline]);
+
   const [campaignName, setCampaignName] = useState(
     selectedContact
       ? `Direct to ${selectedContact.name}`
@@ -157,6 +198,45 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 p-6">
           {/* Left Column: Configuration Controls (7 cols) */}
           <div className="md:col-span-7 space-y-4">
+            {/* Real WhatsApp Companion Status Banner */}
+            <div
+              className={`p-3.5 rounded-xl border flex items-center justify-between text-xs ${
+                sessionStatus.isOnline
+                  ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                  : 'bg-amber-50 border-amber-300 text-amber-950'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <div
+                  className={`w-3 h-3 rounded-full shrink-0 ${
+                    sessionStatus.isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+                  }`}
+                />
+                <div>
+                  <div className="font-bold flex items-center gap-1.5 text-sm">
+                    <Smartphone className="w-4 h-4 text-emerald-700" />
+                    {sessionStatus.isOnline
+                      ? `Connected WhatsApp Sender: ${sessionStatus.connectedNumber}`
+                      : 'No Active WhatsApp Phone Connected'}
+                  </div>
+                  <div className="text-[11px] opacity-80 mt-0.5">
+                    {sessionStatus.isOnline
+                      ? 'Real Multi-Device WebSocket active. Messages transmit physically to recipient handsets!'
+                      : 'To send real WhatsApp messages, link your phone in the "Indian Virtual Numbers (+91)" tab.'}
+                  </div>
+                </div>
+              </div>
+              <span
+                className={`px-2.5 py-1 rounded-full text-[10px] font-bold shrink-0 ${
+                  sessionStatus.isOnline
+                    ? 'bg-emerald-200 text-emerald-900 border border-emerald-300'
+                    : 'bg-amber-200 text-amber-900 border border-amber-300'
+                }`}
+              >
+                {sessionStatus.isOnline ? 'ONLINE' : 'NOT LINKED'}
+              </span>
+            </div>
+
             {/* Sender Mode: Pool or Dedicated */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
@@ -264,11 +344,23 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
                   onChange={(e) => setSelectedNumberId(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-[#128C7E] focus:outline-none"
                 >
-                  {virtualNumbers.map((num) => (
-                    <option key={num.id} value={num.id}>
-                      {num.phoneNumber} • {num.provider} ({num.region})
+                  {sessionStatus.isOnline && sessionStatus.connectedNumber && (
+                    <option value="real-linked-session">
+                      🟢 {sessionStatus.connectedNumber} • Connected Real WhatsApp (Physical Handset)
                     </option>
-                  ))}
+                  )}
+                  {virtualNumbers
+                    .filter((n) => n.id !== 'real-linked-session')
+                    .map((num) => (
+                      <option key={num.id} value={num.id}>
+                        {num.phoneNumber} • {num.provider} ({num.region})
+                      </option>
+                    ))}
+                  {!sessionStatus.isOnline && virtualNumbers.length === 0 && (
+                    <option value="" disabled>
+                      ⚠️ No active WhatsApp sender linked yet
+                    </option>
+                  )}
                 </select>
               </div>
             ) : (
@@ -394,11 +486,13 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
                     <div className="text-xs font-bold leading-tight flex items-center gap-1">
                       {dispatchType === 'MULTI_NUMBER_POOL'
                         ? 'Virtual Number Pool'
+                        : sessionStatus.isOnline && sessionStatus.connectedNumber
+                        ? sessionStatus.connectedNumber
                         : selectedNumber?.phoneNumber || 'Linked WhatsApp Account'}
                       <CheckCircle2 className="w-3 h-3 text-[#25D366] fill-[#25D366]" />
                     </div>
                     <div className="text-[10px] text-emerald-100">
-                      {dispatchType === 'MULTI_NUMBER_POOL' ? 'Round-Robin Pool (+91)' : 'Virtual Number Gateway'}
+                      {sessionStatus.isOnline ? '🟢 Real WhatsApp Companion Online' : 'Virtual Number Gateway'}
                     </div>
                   </div>
                 </div>

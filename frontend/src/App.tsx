@@ -34,7 +34,7 @@ export const App: React.FC = () => {
     loadFromStorage('wa_saas_contacts_v2', initialContacts),
   );
   const [virtualNumbers, setVirtualNumbers] = useState<VirtualNumber[]>(() =>
-    loadFromStorage('wa_saas_numbers_v2', initialNumbers),
+    loadFromStorage('wa_saas_numbers_v3', []),
   );
   const [templates, setTemplates] = useState<MessageTemplate[]>(() =>
     loadFromStorage('wa_saas_templates_v2', initialTemplates),
@@ -75,7 +75,7 @@ export const App: React.FC = () => {
   }, [contacts]);
 
   useEffect(() => {
-    saveToStorage('wa_saas_numbers_v2', virtualNumbers);
+    saveToStorage('wa_saas_numbers_v3', virtualNumbers);
   }, [virtualNumbers]);
 
   useEffect(() => {
@@ -98,49 +98,56 @@ export const App: React.FC = () => {
     saveToStorage('wa_saas_warmup_logs_v2', warmupLogs);
   }, [warmupLogs]);
 
-  // Initial check against backend & sync active live WhatsApp sessions
+  // Live WhatsApp Session continuous synchronization (polls every 3s)
   useEffect(() => {
-    const initBackend = async () => {
-      setIsLiveSyncing(true);
-      await dynamicStore.checkBackendConnection();
-
-      // Check live WhatsApp session status
+    const syncSession = async () => {
       try {
         const res = await axios.get('/api/v1/session/status', { timeout: 3000 });
         if (res.data?.isOnline && res.data?.connectedNumber) {
           const rawNum = res.data.connectedNumber;
-          const formatted = rawNum.startsWith('+') ? rawNum : `+${rawNum}`;
+          let clean = rawNum.replace(/[^\d]/g, '');
+          if (clean.length === 10) clean = `91${clean}`;
+          const formatted = `+${clean}`;
 
           setVirtualNumbers((prev) => {
-            if (!prev.some((n) => n.phoneNumber.replace(/[^\d]/g, '') === formatted.replace(/[^\d]/g, ''))) {
-              return [
-                {
-                  id: 'real-linked-session',
-                  phoneNumber: formatted,
-                  provider: 'Linked WhatsApp Device',
-                  type: 'MOBILE',
-                  status: 'ACTIVE',
-                  sessionStatus: 'CONNECTED',
-                  dailyLimit: 1000,
-                  dailySentCount: 0,
-                  healthScore: 100,
-                  warmupStage: 'WARMED_READY',
-                  proxyDisplay: 'Direct Handset WebSocket',
-                  monthlyRentalINR: '0.00',
-                  capabilities: { voice: true, sms: true, virtualMessaging: true },
-                  region: 'Active Linked Phone',
-                },
-                ...prev,
-              ];
-            }
-            return prev;
+            const exists = prev.some(
+              (n) => n.id === 'real-linked-session' && n.phoneNumber.replace(/[^\d]/g, '') === clean,
+            );
+            if (exists) return prev;
+
+            const filtered = prev.filter(
+              (n) => n.id !== 'real-linked-session' && n.phoneNumber.replace(/[^\d]/g, '') !== clean,
+            );
+            return [
+              {
+                id: 'real-linked-session',
+                phoneNumber: formatted,
+                provider: '🟢 Connected WhatsApp Phone',
+                type: 'MOBILE',
+                status: 'ACTIVE',
+                sessionStatus: 'CONNECTED',
+                dailyLimit: 2000,
+                dailySentCount: 0,
+                healthScore: 100,
+                warmupStage: 'WARMED_READY',
+                proxyDisplay: 'Direct Handset WebSocket Gateway',
+                monthlyRentalINR: '0.00',
+                capabilities: { voice: true, sms: true, virtualMessaging: true },
+                region: 'Active Verified Session',
+              },
+              ...filtered,
+            ];
           });
+        } else {
+          // If offline, remove the real-linked-session so stale disconnected items are not shown
+          setVirtualNumbers((prev) => prev.filter((n) => n.id !== 'real-linked-session'));
         }
       } catch (e) {}
-
-      setIsLiveSyncing(false);
     };
-    initBackend();
+
+    syncSession();
+    const interval = setInterval(syncSession, 3000);
+    return () => clearInterval(interval);
   }, []);
 
   // 1. Triggered when client clicks on WhatsApp in CRM
