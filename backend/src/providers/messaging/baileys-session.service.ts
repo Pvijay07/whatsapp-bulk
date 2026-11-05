@@ -3,6 +3,7 @@ import makeWASocket, {
   DisconnectReason,
   useMultiFileAuthState,
   WASocket,
+  Browsers,
 } from '@whiskeysockets/baileys';
 import * as QRCode from 'qrcode';
 import * as path from 'path';
@@ -26,21 +27,6 @@ export class BaileysSessionService implements OnModuleInit {
 
   async initSocket() {
     const sessionDir = path.resolve(process.cwd(), 'sessions', 'active_device');
-    const credsFile = path.join(sessionDir, 'creds.json');
-
-    // If an uncompleted pairing attempt exists (registered: false), clean it up so Baileys generates a real QR code
-    if (fs.existsSync(credsFile)) {
-      try {
-        const creds = JSON.parse(fs.readFileSync(credsFile, 'utf8'));
-        if (!creds.registered) {
-          this.logger.log('Purging uncompleted credentials to generate fresh real QR code...');
-          fs.rmSync(sessionDir, { recursive: true, force: true });
-        }
-      } catch (e) {
-        fs.rmSync(sessionDir, { recursive: true, force: true });
-      }
-    }
-
     if (!fs.existsSync(sessionDir)) {
       fs.mkdirSync(sessionDir, { recursive: true });
     }
@@ -52,8 +38,12 @@ export class BaileysSessionService implements OnModuleInit {
 
       this.sock = makeWASocket({
         auth: state,
-        printQRInTerminal: true,
-        browser: ['WhatsApp SaaS Platform', 'Chrome', '1.0.0'],
+        printQRInTerminal: false,
+        browser: Browsers.macOS('Desktop'),
+        syncFullHistory: false,
+        connectTimeoutMs: 60000,
+        defaultQueryTimeoutMs: 60000,
+        keepAliveIntervalMs: 25000,
       });
 
       this.sock.ev.on('connection.update', async (update) => {
@@ -83,14 +73,24 @@ export class BaileysSessionService implements OnModuleInit {
 
         if (connection === 'close') {
           const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
-          const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-          this.sessionState = 'DISCONNECTED';
-          this.logger.warn(`WhatsApp session closed (status: ${statusCode}). Reconnect allowed: ${shouldReconnect}`);
+          const isLoggedOut = statusCode === DisconnectReason.loggedOut;
+          this.logger.warn(`WhatsApp session closed (status: ${statusCode}). Logged out: ${isLoggedOut}`);
 
-          if (shouldReconnect) {
-            setTimeout(() => this.initSocket(), 3000);
-          } else {
+          if (isLoggedOut) {
+            this.sessionState = 'DISCONNECTED';
             this.connectedPhoneNumber = null;
+            this.currentQrCodeDataUrl = null;
+            if (fs.existsSync(sessionDir)) {
+              fs.rmSync(sessionDir, { recursive: true, force: true });
+            }
+            setTimeout(() => this.initSocket(), 1500);
+          } else {
+            // Crucial: Code 515 (restartRequired) is standard Baileys handshake immediately after QR scan.
+            // Do NOT purge credentials, simply reconnect to finalize pairing.
+            this.sessionState = 'CONNECTING';
+            const reconnectDelay = statusCode === DisconnectReason.restartRequired ? 500 : 2500;
+            this.logger.log(`Reconnecting WhatsApp session in ${reconnectDelay}ms...`);
+            setTimeout(() => this.initSocket(), reconnectDelay);
           }
         }
       });

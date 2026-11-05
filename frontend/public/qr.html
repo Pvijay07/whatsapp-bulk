@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>WhatsApp Live QR Pairing</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      background: #0f172a;
+      color: white;
+    }
+    .card {
+      background: #1e293b;
+      padding: 2.5rem;
+      border-radius: 1.5rem;
+      text-align: center;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+      border: 1px solid #334155;
+      max-width: 400px;
+      width: 90%;
+    }
+    img {
+      width: 260px;
+      height: 260px;
+      border-radius: 1rem;
+      background: white;
+      padding: 0.75rem;
+      margin: 1.5rem 0;
+    }
+    .status {
+      font-size: 0.875rem;
+      color: #94a3b8;
+    }
+    .online {
+      color: #10b981;
+      font-weight: bold;
+    }
+    button {
+      background: #10b981;
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      font-weight: bold;
+      border-radius: 0.75rem;
+      cursor: pointer;
+      margin-top: 1rem;
+    }
+    button:hover {
+      background: #059669;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2 style="margin: 0 0 0.5rem 0; color: #f8fafc;">WhatsApp Multi-Device Link</h2>
+    <p class="status">Open WhatsApp &rarr; Linked Devices &rarr; Link a Device</p>
+    <div id="container">
+      <div id="loading" style="padding: 3rem 0; color: #94a3b8;">Loading authentic WhatsApp QR...</div>
+      <img id="qrImg" style="display: none;" alt="WhatsApp QR Code" />
+    </div>
+    <div id="statusText" class="status">Connecting to WhatsApp servers...</div>
+    <button onclick="fetchQr(true)">Refresh QR Code</button>
+  </div>
+
+  <script>
+    async function fetchQr(force = false) {
+      const statusText = document.getElementById('statusText');
+      const qrImg = document.getElementById('qrImg');
+      const loading = document.getElementById('loading');
+
+      try {
+        if (force) {
+          statusText.innerText = 'Requesting fresh QR from WhatsApp...';
+          const postRes = await fetch('http://localhost:3000/api/v1/session/qr', { method: 'POST' });
+          const postData = await postRes.json();
+          if (postData.qrCodeDataUrl) {
+            qrImg.src = postData.qrCodeDataUrl;
+            qrImg.style.display = 'inline-block';
+            loading.style.display = 'none';
+            statusText.innerText = 'Live WhatsApp QR ready to scan!';
+            return;
+          }
+        }
+
+        const res = await fetch('http://localhost:3000/api/v1/session/status');
+        const data = await res.json();
+
+        if (data.isOnline) {
+          container.innerHTML = '<div style="padding: 2rem 0; font-size: 1.25rem;" class="online">Device Connected: ' + data.connectedNumber + '</div>';
+          statusText.innerText = 'Session is active. Ready to send messages!';
+          return;
+        }
+
+        if (data.qrCodeDataUrl) {
+          qrImg.src = data.qrCodeDataUrl;
+          qrImg.style.display = 'inline-block';
+          loading.style.display = 'none';
+          statusText.innerText = 'Live WhatsApp QR ready to scan!';
+        } else {
+          fetchQr(true);
+        }
+      } catch (e) {
+        statusText.innerText = 'Error connecting to backend: ' + e.message;
+      }
+    }
+
+    fetchQr();
+    setInterval(() => fetchQr(false), 5000);
+  </script>
+</body>
+</html>
+
