@@ -682,24 +682,39 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
                   <div className="text-[10px] text-right text-slate-400">
                     Just now &bull; {spintaxEnabled ? 'Spintax Dynamic' : 'Direct'}
                   </div>
+                </div>
 
-                  {/* Interactive Buttons Preview inside Chat Bubble */}
-                  {buttonsEnabled && campaignButtons.length > 0 && (
-                    <div className="border-t border-slate-100 divide-y divide-slate-100 -mx-3 -mb-3 mt-2 bg-slate-50/70">
-                      {campaignButtons.map((btn) => (
+                {/* Native WhatsApp Interactive Poll Button Card Preview */}
+                {buttonsEnabled && campaignButtons.length > 0 && (
+                  <div className="bg-white rounded-lg rounded-tl-none p-3 shadow-sm border border-slate-200/60 max-w-[95%] space-y-2.5 animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                      <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        👇 Select an option below to respond:
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      {campaignButtons.map((btn, idx) => (
                         <div
                           key={btn.id}
-                          className="py-2 px-3 text-center text-xs font-semibold text-[#128C7E] flex items-center justify-center gap-1.5 hover:bg-emerald-50/80 transition"
+                          className="py-1.5 px-3 rounded-lg border border-slate-200 bg-slate-50/80 hover:bg-emerald-50 hover:border-emerald-400 transition flex items-center justify-between text-xs cursor-pointer group"
                         >
-                          {btn.type === 'URL' && <ExternalLink className="w-3.5 h-3.5 text-[#128C7E]" />}
-                          {btn.type === 'PHONE' && <PhoneCall className="w-3.5 h-3.5 text-[#128C7E]" />}
-                          {btn.type === 'QUICK_REPLY' && <CornerDownLeft className="w-3.5 h-3.5 text-[#128C7E]" />}
-                          <span className="truncate">{btn.text || 'Action Button'}</span>
+                          <div className="flex items-center gap-2 font-medium text-slate-700 group-hover:text-emerald-900">
+                            {btn.type === 'URL' && <ExternalLink className="w-3.5 h-3.5 text-blue-500" />}
+                            {btn.type === 'PHONE' && <PhoneCall className="w-3.5 h-3.5 text-emerald-600" />}
+                            {btn.type === 'QUICK_REPLY' && <CornerDownLeft className="w-3.5 h-3.5 text-purple-600" />}
+                            <span className="truncate">{btn.text || `Option ${idx + 1}`}</span>
+                          </div>
+                          <div className="w-4 h-4 rounded-full border-2 border-slate-300 group-hover:border-emerald-500 group-hover:bg-emerald-500/20 transition flex items-center justify-center shrink-0" />
                         </div>
                       ))}
                     </div>
-                  )}
-                </div>
+                    <div className="text-[9px] text-slate-400 flex items-center justify-between pt-1 border-t border-slate-100">
+                      <span>Single choice</span>
+                      <span>Interactive WhatsApp Button</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Footer notice */}
