@@ -371,6 +371,25 @@ export class DynamicStoreManager {
       };
     }
   }
+
+  // Request 8-digit pairing code for existing number without QR scanning
+  async requestPairingCode(phoneNumber: string): Promise<{
+    success: boolean;
+    pairingCode?: string;
+    error?: string;
+  }> {
+    try {
+      const res = await apiClient.post('/session/pairing-code', { phoneNumber });
+      return res.data;
+    } catch (err: any) {
+      const errorMsg =
+        err.response?.data?.message || err.message || 'Failed to request pairing code';
+      return {
+        success: false,
+        error: errorMsg,
+      };
+    }
+  }
 }
 
 export const dynamicStore = new DynamicStoreManager();

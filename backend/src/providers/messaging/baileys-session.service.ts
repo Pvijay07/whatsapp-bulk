@@ -136,6 +136,33 @@ export class BaileysSessionService implements OnModuleInit {
     }
   }
 
+  /**
+   * Request an 8-character Pairing Code for an existing WhatsApp number without QR camera scanning.
+   * User enters this code in WhatsApp -> Linked Devices -> "Link with phone number instead".
+   */
+  async requestPairingCode(phoneNumber: string): Promise<string> {
+    let clean = phoneNumber.replace(/[^\d]/g, '');
+    if (clean.length === 10) clean = `91${clean}`;
+
+    if (!this.sock) {
+      await this.initSocket();
+    }
+
+    if (this.sessionState === 'ONLINE') {
+      throw new Error(`Device (${this.connectedPhoneNumber}) is already linked and online. Unlink first.`);
+    }
+
+    try {
+      this.logger.log(`Requesting 8-digit WhatsApp pairing code for number: ${clean}...`);
+      const code = await this.sock!.requestPairingCode(clean);
+      this.logger.log(`WhatsApp pairing code generated for ${clean}: ${code}`);
+      return code;
+    } catch (err: any) {
+      this.logger.error(`Failed to request pairing code for ${clean}: ${err.message}`);
+      throw new Error(err.message || 'Failed to request pairing code from WhatsApp servers');
+    }
+  }
+
   async logout() {
     try {
       if (this.sock) {

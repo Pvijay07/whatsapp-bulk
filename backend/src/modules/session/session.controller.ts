@@ -17,6 +17,23 @@ export class SessionController {
   }
 
   /**
+   * Generates an 8-character pairing code for an existing WhatsApp number without QR camera scanning.
+   */
+  @Post('pairing-code')
+  @HttpCode(HttpStatus.OK)
+  async getPairingCode(@Body() body: { phoneNumber: string }) {
+    if (!body.phoneNumber) {
+      throw new BadRequestException('phoneNumber is required');
+    }
+    try {
+      const pairingCode = await this.baileysService.requestPairingCode(body.phoneNumber);
+      return { success: true, pairingCode };
+    } catch (err: any) {
+      throw new BadRequestException(err.message);
+    }
+  }
+
+  /**
    * Transmits a real WhatsApp message over the live Baileys WebSocket protocol.
    * Throws an authentic error if device is not linked (NO mock data / NO simulated delivery).
    */
