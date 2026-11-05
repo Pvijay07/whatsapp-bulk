@@ -17,6 +17,19 @@ export class SessionController {
   }
 
   /**
+   * Generates or refreshes a live, authentic WhatsApp multi-device pairing QR code.
+   */
+  @Post('qr')
+  @HttpCode(HttpStatus.OK)
+  async generateQr() {
+    const res = await this.baileysService.generateFreshQr();
+    if (!res.success && res.error) {
+      throw new BadRequestException(res.error);
+    }
+    return res;
+  }
+
+  /**
    * Generates an 8-character pairing code for an existing WhatsApp number without QR camera scanning.
    */
   @Post('pairing-code')

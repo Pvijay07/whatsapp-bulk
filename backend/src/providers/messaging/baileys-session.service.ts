@@ -26,6 +26,21 @@ export class BaileysSessionService implements OnModuleInit {
 
   async initSocket() {
     const sessionDir = path.resolve(process.cwd(), 'sessions', 'active_device');
+    const credsFile = path.join(sessionDir, 'creds.json');
+
+    // If an uncompleted pairing attempt exists (registered: false), clean it up so Baileys generates a real QR code
+    if (fs.existsSync(credsFile)) {
+      try {
+        const creds = JSON.parse(fs.readFileSync(credsFile, 'utf8'));
+        if (!creds.registered) {
+          this.logger.log('Purging uncompleted credentials to generate fresh real QR code...');
+          fs.rmSync(sessionDir, { recursive: true, force: true });
+        }
+      } catch (e) {
+        fs.rmSync(sessionDir, { recursive: true, force: true });
+      }
+    }
+
     if (!fs.existsSync(sessionDir)) {
       fs.mkdirSync(sessionDir, { recursive: true });
     }
@@ -37,7 +52,7 @@ export class BaileysSessionService implements OnModuleInit {
 
       this.sock = makeWASocket({
         auth: state,
-        printQRInTerminal: false,
+        printQRInTerminal: true,
         browser: ['WhatsApp SaaS Platform', 'Chrome', '1.0.0'],
       });
 
@@ -133,6 +148,52 @@ export class BaileysSessionService implements OnModuleInit {
         messageId: '',
         error: err.message,
       };
+    }
+  }
+
+  /**
+   * Resets uncompleted session and triggers a fresh, authentic WhatsApp QR code.
+   */
+  async generateFreshQr(): Promise<{ success: boolean; qrCodeDataUrl: string | null; error?: string }> {
+    if (this.sessionState === 'ONLINE') {
+      return { success: false, qrCodeDataUrl: null, error: `Device (${this.connectedPhoneNumber}) is already online.` };
+    }
+
+    try {
+      this.logger.log('Generating fresh real WhatsApp QR code...');
+      if (this.sock) {
+        try {
+          this.sock.end(undefined);
+        } catch (e) {}
+        this.sock = null;
+      }
+
+      const sessionDir = path.resolve(process.cwd(), 'sessions', 'active_device');
+      if (fs.existsSync(sessionDir)) {
+        fs.rmSync(sessionDir, { recursive: true, force: true });
+      }
+
+      this.currentQrCodeDataUrl = null;
+      this.sessionState = 'CONNECTING';
+
+      await this.initSocket();
+
+      // Poll until QR is emitted (up to 12s)
+      const start = Date.now();
+      while (Date.now() - start < 12000) {
+        if (this.currentQrCodeDataUrl) {
+          return { success: true, qrCodeDataUrl: this.currentQrCodeDataUrl };
+        }
+        await new Promise((r) => setTimeout(r, 400));
+      }
+
+      return {
+        success: !!this.currentQrCodeDataUrl,
+        qrCodeDataUrl: this.currentQrCodeDataUrl,
+        error: this.currentQrCodeDataUrl ? undefined : 'Timed out waiting for WhatsApp QR code',
+      };
+    } catch (err: any) {
+      return { success: false, qrCodeDataUrl: null, error: err.message };
     }
   }
 

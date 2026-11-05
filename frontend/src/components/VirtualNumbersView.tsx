@@ -79,12 +79,34 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({
   const [isWarmingActive, setIsWarmingActive] = useState(false);
 
   // Pairing Mode State: 8-digit code vs QR scan
-  const [pairingTab, setPairingTab] = useState<'CODE' | 'QR'>('CODE');
+  const [pairingTab, setPairingTab] = useState<'CODE' | 'QR'>('QR');
   const [pairingPhoneNumber, setPairingPhoneNumber] = useState('');
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [isRequestingPairingCode, setIsRequestingPairingCode] = useState(false);
+  const [isRefreshingQr, setIsRefreshingQr] = useState(false);
   const [pairingError, setPairingError] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
+
+  const handleRefreshQr = async () => {
+    setIsRefreshingQr(true);
+    setPairingError(null);
+    try {
+      const res = await axios.post('/api/v1/session/qr');
+      if (res.data?.success && res.data?.qrCodeDataUrl) {
+        setSessionStatus((prev) => ({
+          ...prev,
+          qrCodeDataUrl: res.data.qrCodeDataUrl,
+          state: 'SCAN_QR_REQUIRED',
+        }));
+      } else if (res.data?.error) {
+        setPairingError(res.data.error);
+      }
+    } catch (err: any) {
+      setPairingError(err.response?.data?.message || err.message || 'Failed to generate QR code');
+    } finally {
+      setIsRefreshingQr(false);
+    }
+  };
 
   // Form for custom telecom trunk
   const [customTrunkNumber, setCustomTrunkNumber] = useState('');
@@ -140,6 +162,12 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({
     const interval = setInterval(fetchSessionStatus, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (showQrModal && pairingTab === 'QR' && !sessionStatus.isOnline && !sessionStatus.qrCodeDataUrl) {
+      handleRefreshQr();
+    }
+  }, [showQrModal, pairingTab]);
 
   const handleDisconnect = async () => {
     try {
@@ -880,8 +908,14 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({
                   Open WhatsApp on your phone &rarr; <strong>Settings</strong> &rarr; <strong>Linked Devices</strong> &rarr; <strong>Link a Device</strong> and point your camera here:
                 </p>
 
-                <div className="w-56 h-56 mx-auto bg-white border-2 border-slate-200 rounded-2xl flex flex-col items-center justify-center p-3 shadow-inner">
-                  {sessionStatus.qrCodeDataUrl ? (
+                <div className="w-64 h-64 mx-auto bg-white border-2 border-slate-200 rounded-2xl flex flex-col items-center justify-center p-3 shadow-inner relative">
+                  {isRefreshingQr ? (
+                    <div className="text-center space-y-2">
+                      <RefreshCw className="w-8 h-8 text-emerald-600 animate-spin mx-auto" />
+                      <div className="text-xs text-slate-600 font-medium">Generating real WhatsApp QR...</div>
+                      <div className="text-[10px] text-slate-400">Connecting to WhatsApp Noise servers</div>
+                    </div>
+                  ) : sessionStatus.qrCodeDataUrl ? (
                     <img
                       src={sessionStatus.qrCodeDataUrl}
                       alt="WhatsApp Pairing QR"
@@ -895,16 +929,35 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({
                     </div>
                   ) : (
                     <div className="text-center space-y-2">
-                      <QrCode className="w-20 h-20 text-slate-700 mx-auto opacity-70" />
-                      <div className="text-[11px] text-slate-500 font-medium">
-                        Pairing Session Ready
+                      <QrCode className="w-16 h-16 text-slate-400 mx-auto" />
+                      <div className="text-xs text-slate-600 font-semibold">
+                        Awaiting QR Generation
                       </div>
-                      <div className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded">
-                        WebSocket Engine Active
-                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRefreshQr}
+                        className="px-3 py-1.5 bg-[#128C7E] hover:bg-[#075E54] text-white text-xs font-bold rounded-lg shadow-xs inline-flex items-center gap-1.5"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        Generate Live QR
+                      </button>
                     </div>
                   )}
                 </div>
+
+                {!sessionStatus.isOnline && (
+                  <div className="flex justify-center">
+                    <button
+                      type="button"
+                      onClick={handleRefreshQr}
+                      disabled={isRefreshingQr}
+                      className="px-4 py-2 border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl flex items-center gap-2 active:scale-95 disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 ${isRefreshingQr ? 'animate-spin' : ''}`} />
+                      {sessionStatus.qrCodeDataUrl ? 'Regenerate / Refresh Real QR' : 'Generate Real QR Code'}
+                    </button>
+                  </div>
+                )}
 
                 <div className="p-3 bg-slate-50 rounded-xl text-left text-xs text-slate-600 space-y-1">
                   <div className="font-semibold text-slate-800">How camera linking works:</div>
