@@ -123,8 +123,8 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
     templates[0]?.bodyText || '{Hello|Hi|Greetings} {{1}}! We have an exclusive festive offer for you today. Reply with YES to receive your coupon code!',
   );
 
-  // Interactive CTA & Quick Reply Buttons (Optional)
-  const [buttonsEnabled, setButtonsEnabled] = useState(false);
+  // Interactive CTA & Quick Reply Buttons (wa.me Click-to-Chat)
+  const [buttonsEnabled, setButtonsEnabled] = useState(true);
   const [campaignButtons, setCampaignButtons] = useState<CampaignActionButton[]>([
     { id: 'btn-1', type: 'QUICK_REPLY', text: '🎁 Claim 25% Off' },
     { id: 'btn-2', type: 'URL', text: '🌐 Visit Website', value: 'https://example.com' },
@@ -208,6 +208,23 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
     renderedBody = parseSpintax(renderedBody);
   } else {
     renderedBody = renderedBody.replace(/\{([^{}]+)\}/g, (_, choices) => choices.split('|')[0]);
+  }
+
+  const senderPreviewNum = (sessionStatus.connectedNumber || '918897727709').replace(/[^\d]/g, '');
+
+  if (buttonsEnabled && campaignButtons.length > 0) {
+    const actionLines = campaignButtons.map((b) => {
+      if (b.type === 'URL') {
+        return `🌐 *${b.text}*\n   🔗 ${b.value || 'https://example.com'}`;
+      } else if (b.type === 'PHONE') {
+        return `📞 *${b.text}*\n   📲 ${b.value || '+919876543210'}`;
+      } else {
+        const replyText = b.text.replace(/^[^\w\s]+/g, '').trim() || b.text;
+        const encoded = encodeURIComponent(replyText);
+        return `💬 *${b.text}* (Tap to Instant Reply):\n   👉 https://wa.me/${senderPreviewNum}?text=${encoded}`;
+      }
+    });
+    renderedBody = `${renderedBody}\n\n━━━━━━━━━━━━━━━━━━━━\n${actionLines.join('\n\n')}\n━━━━━━━━━━━━━━━━━━━━`;
   }
 
   return (
@@ -470,16 +487,16 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
               />
             </div>
 
-            {/* Interactive Action Buttons (CTA & Quick Reply) */}
+            {/* Interactive Action Buttons (wa.me & CTA Links) */}
             <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                     <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                    Interactive Buttons in Campaign (CTA & Quick Reply)
+                    Interactive Click-to-Chat Buttons (wa.me & CTA Links)
                   </div>
                   <div className="text-[11px] text-slate-500">
-                    Add up to 3 interactive tap buttons to your broadcast message.
+                    Generates 1-tap wa.me Quick Replies, website links, and click-to-call phone numbers.
                   </div>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">

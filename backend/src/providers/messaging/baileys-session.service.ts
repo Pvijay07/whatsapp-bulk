@@ -285,23 +285,34 @@ export class BaileysSessionService implements OnModuleInit {
       }
       const jid = `${clean}@s.whatsapp.net`;
 
-      // Format Action Buttons (URL, Phone, Quick Reply) if configured
+      // Format Action Buttons into authentic WhatsApp Click-to-Chat Deep Links (wa.me) & Rich Cards
       let finalText = text;
       if (buttons && buttons.length > 0) {
-        const formattedActions = buttons.map((b) => {
+        const senderClean = (
+          this.connectedPhoneNumber ||
+          this.getSavedRegisteredNumber() ||
+          '918897727709'
+        ).replace(/[^\d]/g, '');
+
+        const actionLines = buttons.map((b) => {
           const typeUpper = (b.type || 'QUICK_REPLY').toUpperCase();
           if (typeUpper === 'URL') {
             const url = b.value || 'https://example.com';
-            return `🌐 ${b.text}: ${url}`;
+            return `🌐 *${b.text}*\n   🔗 ${url}`;
           } else if (typeUpper === 'PHONE') {
-            const phone = b.value || '';
-            return `📞 ${b.text}: ${phone}`;
+            let phone = (b.value || '').replace(/[^\d+]/g, '');
+            if (!phone.startsWith('+') && phone.length === 10) phone = `+91${phone}`;
+            return `📞 *${b.text}*\n   📲 ${phone}`;
           } else {
-            return `👉 ${b.text}`;
+            // Quick reply using wa.me deep link with pre-typed text
+            const replyText = b.text.replace(/^[^\w\s]+/g, '').trim() || b.text;
+            const encoded = encodeURIComponent(replyText);
+            const deepLink = `https://wa.me/${senderClean}?text=${encoded}`;
+            return `💬 *${b.text}* (Tap to Instant Reply):\n   👉 ${deepLink}`;
           }
         });
 
-        finalText = `${text}\n\n${formattedActions.join('\n')}`;
+        finalText = `${text}\n\n━━━━━━━━━━━━━━━━━━━━\n${actionLines.join('\n\n')}\n━━━━━━━━━━━━━━━━━━━━`;
       }
 
       this.logger.log(`Transmitting real WhatsApp broadcast to ${jid} over WebSocket...`);
