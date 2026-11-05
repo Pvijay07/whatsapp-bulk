@@ -285,23 +285,23 @@ export class BaileysSessionService implements OnModuleInit {
       }
       const jid = `${clean}@s.whatsapp.net`;
 
-      // Format Action Buttons (URL, Phone, Quick Reply) so WhatsApp renders clickable action links
+      // Format Action Buttons (URL, Phone, Quick Reply) if configured
       let finalText = text;
       if (buttons && buttons.length > 0) {
         const formattedActions = buttons.map((b) => {
           const typeUpper = (b.type || 'QUICK_REPLY').toUpperCase();
           if (typeUpper === 'URL') {
             const url = b.value || 'https://example.com';
-            return `🌐 *${b.text}*\n   🔗 ${url}`;
+            return `🌐 ${b.text}: ${url}`;
           } else if (typeUpper === 'PHONE') {
             const phone = b.value || '';
-            return `📞 *${b.text}*\n   📲 ${phone}`;
+            return `📞 ${b.text}: ${phone}`;
           } else {
-            return `👉 *${b.text}* (Reply to Claim)`;
+            return `👉 ${b.text}`;
           }
         });
 
-        finalText = `${text}\n\n───────────────\n${formattedActions.join('\n\n')}\n───────────────`;
+        finalText = `${text}\n\n${formattedActions.join('\n')}`;
       }
 
       this.logger.log(`Transmitting real WhatsApp broadcast to ${jid} over WebSocket...`);
@@ -309,26 +309,6 @@ export class BaileysSessionService implements OnModuleInit {
 
       const realMsgId = sent?.key?.id || `VMSG-${clean}-${Date.now().toString(36)}`;
       this.logger.log(`✅ Message delivered to WhatsApp servers! Key ID: ${realMsgId}`);
-
-      // If action buttons are configured, dispatch real WhatsApp Interactive Poll Buttons right underneath!
-      if (buttons && buttons.length > 0) {
-        const pollValues = buttons.map((b) => b.text.trim()).filter(Boolean);
-        if (pollValues.length > 0) {
-          try {
-            this.logger.log(`Dispatching native WhatsApp interactive poll buttons to ${jid}...`);
-            await this.sock.sendMessage(jid, {
-              poll: {
-                name: '👇 Select an option below to respond:',
-                values: pollValues,
-                selectableCount: 1,
-              },
-            });
-            this.logger.log(`✅ Interactive WhatsApp poll buttons delivered to ${jid}!`);
-          } catch (pollErr: any) {
-            this.logger.warn(`Failed to dispatch poll buttons: ${pollErr.message}`);
-          }
-        }
-      }
 
       return {
         success: true,
