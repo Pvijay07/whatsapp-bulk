@@ -285,103 +285,27 @@ export class BaileysSessionService implements OnModuleInit {
       }
       const jid = `${clean}@s.whatsapp.net`;
 
-      // If interactive buttons are configured, transmit authentic native WhatsApp interactive buttons
+      // Format Action Buttons (URL, Phone, Quick Reply) so WhatsApp renders clickable action links
+      let finalText = text;
       if (buttons && buttons.length > 0) {
-        try {
-          const nativeButtons = buttons.map((b, i) => {
-            const typeUpper = (b.type || 'QUICK_REPLY').toUpperCase();
-            if (typeUpper === 'URL') {
-              return {
-                name: 'cta_url',
-                buttonParamsJson: JSON.stringify({
-                  display_text: b.text || 'Visit Website',
-                  url: b.value || 'https://example.com',
-                  merchant_url: b.value || 'https://example.com',
-                }),
-              };
-            } else if (typeUpper === 'PHONE') {
-              const phoneVal = (b.value || '').replace(/[^\d+]/g, '');
-              return {
-                name: 'cta_call',
-                buttonParamsJson: JSON.stringify({
-                  display_text: b.text || 'Call Now',
-                  phone_number: phoneVal,
-                }),
-              };
-            } else if (typeUpper === 'COPY' || typeUpper === 'CODE') {
-              return {
-                name: 'cta_copy',
-                buttonParamsJson: JSON.stringify({
-                  display_text: b.text || 'Copy Code',
-                  id: b.id || `copy_${i}`,
-                  copy_code: b.value || 'DISCOUNT25',
-                }),
-              };
-            } else {
-              return {
-                name: 'quick_reply',
-                buttonParamsJson: JSON.stringify({
-                  display_text: b.text || `Option ${i + 1}`,
-                  id: b.id || `btn_${i + 1}_${Date.now()}`,
-                }),
-              };
-            }
-          });
+        const formattedActions = buttons.map((b) => {
+          const typeUpper = (b.type || 'QUICK_REPLY').toUpperCase();
+          if (typeUpper === 'URL') {
+            const url = b.value || 'https://example.com';
+            return `🌐 *${b.text}*\n   🔗 ${url}`;
+          } else if (typeUpper === 'PHONE') {
+            const phone = b.value || '';
+            return `📞 *${b.text}*\n   📲 ${phone}`;
+          } else {
+            return `👉 *${b.text}* (Reply to Claim)`;
+          }
+        });
 
-          this.logger.log(`Building native interactive button message with ${nativeButtons.length} action buttons for ${jid}...`);
-
-          const interactiveMsg = generateWAMessageFromContent(
-            jid,
-            {
-              viewOnceMessage: {
-                message: {
-                  messageContextInfo: {
-                    deviceListMetadata: {},
-                    deviceListMetadataVersion: 2,
-                  },
-                  interactiveMessage: proto.Message.InteractiveMessage.create({
-                    body: proto.Message.InteractiveMessage.Body.create({
-                      text: text,
-                    }),
-                    footer: proto.Message.InteractiveMessage.Footer.create({
-                      text: 'SalesBuster Broadcast',
-                    }),
-                    header: proto.Message.InteractiveMessage.Header.create({
-                      title: '',
-                      hasMediaAttachment: false,
-                    }),
-                    nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
-                      buttons: nativeButtons,
-                    }),
-                  }),
-                },
-              },
-            },
-            { userJid: this.sock.user?.id || jid },
-          );
-
-          const realMsgId = interactiveMsg?.key?.id || `VMSG-${clean}-${Date.now().toString(36)}`;
-
-          await this.sock.relayMessage(jid, interactiveMsg.message!, {
-            messageId: realMsgId,
-          });
-
-          this.logger.log(`✅ Native interactive WhatsApp buttons delivered to ${jid}! Key ID: ${realMsgId}`);
-
-          return {
-            success: true,
-            messageId: realMsgId,
-          };
-        } catch (interactiveErr: any) {
-          this.logger.warn(
-            `Native interactive button relay failed (${interactiveErr.message}), falling back to standard text message...`,
-          );
-        }
+        finalText = `${text}\n\n───────────────\n${formattedActions.join('\n\n')}\n───────────────`;
       }
 
-      // Standard text message delivery
-      this.logger.log(`Transmitting real WhatsApp text message to ${jid} over WebSocket...`);
-      const sent = await this.sock.sendMessage(jid, { text });
+      this.logger.log(`Transmitting real WhatsApp broadcast to ${jid} over WebSocket...`);
+      const sent = await this.sock.sendMessage(jid, { text: finalText });
 
       const realMsgId = sent?.key?.id || `VMSG-${clean}-${Date.now().toString(36)}`;
       this.logger.log(`✅ Message delivered to WhatsApp servers! Key ID: ${realMsgId}`);
