@@ -762,8 +762,8 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({
 
       {/* Device Linking Modal: 8-Digit Code (No Scanning) or Camera QR */}
       {showQrModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 text-center space-y-4 animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[92vh] overflow-y-auto p-6 text-center space-y-4 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-1.5">
                 <Smartphone className="w-5 h-5 text-[#128C7E]" />
