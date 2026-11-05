@@ -103,17 +103,27 @@ export const App: React.FC = () => {
     const syncSession = async () => {
       try {
         const res = await axios.get('/api/v1/session/status', { timeout: 3000 });
-        if (res.data?.isOnline && res.data?.connectedNumber) {
+        if (res.data?.connectedNumber) {
           const rawNum = res.data.connectedNumber;
           let clean = rawNum.replace(/[^\d]/g, '');
           if (clean.length === 10) clean = `91${clean}`;
           const formatted = `+${clean}`;
 
           setVirtualNumbers((prev) => {
-            const exists = prev.some(
-              (n) => n.id === 'real-linked-session' && n.phoneNumber.replace(/[^\d]/g, '') === clean,
-            );
-            if (exists) return prev;
+            const isOnline = !!res.data?.isOnline;
+            const existing = prev.find((n) => n.id === 'real-linked-session');
+            const targetStatus = isOnline ? 'ACTIVE' : 'RECONNECTING';
+            const targetSessionStatus = isOnline ? 'CONNECTED' : 'CONNECTING';
+            const targetProvider = isOnline ? '🟢 Connected WhatsApp Phone' : '🟡 WhatsApp (Connecting...)';
+
+            if (
+              existing &&
+              existing.phoneNumber === formatted &&
+              existing.status === targetStatus &&
+              existing.provider === targetProvider
+            ) {
+              return prev;
+            }
 
             const filtered = prev.filter(
               (n) => n.id !== 'real-linked-session' && n.phoneNumber.replace(/[^\d]/g, '') !== clean,
@@ -122,13 +132,13 @@ export const App: React.FC = () => {
               {
                 id: 'real-linked-session',
                 phoneNumber: formatted,
-                provider: '🟢 Connected WhatsApp Phone',
+                provider: targetProvider,
                 type: 'MOBILE',
-                status: 'ACTIVE',
-                sessionStatus: 'CONNECTED',
+                status: targetStatus as any,
+                sessionStatus: targetSessionStatus as any,
                 dailyLimit: 2000,
                 dailySentCount: 0,
-                healthScore: 100,
+                healthScore: isOnline ? 100 : 85,
                 warmupStage: 'WARMED_READY',
                 proxyDisplay: 'Direct Handset WebSocket Gateway',
                 monthlyRentalINR: '0.00',
@@ -138,8 +148,8 @@ export const App: React.FC = () => {
               ...filtered,
             ];
           });
-        } else {
-          // If offline, remove the real-linked-session so stale disconnected items are not shown
+        } else if (res.data?.state === 'DISCONNECTED' && !res.data?.isRegistered) {
+          // If explicitly unlinked, remove the real-linked-session
           setVirtualNumbers((prev) => prev.filter((n) => n.id !== 'real-linked-session'));
         }
       } catch (e) {}

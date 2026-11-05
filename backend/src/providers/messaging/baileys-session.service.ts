@@ -18,21 +18,104 @@ export class BaileysSessionService implements OnModuleInit {
   private sessionState: SessionConnectionState = 'DISCONNECTED';
   private currentQrCodeDataUrl: string | null = null;
   private connectedPhoneNumber: string | null = null;
+  private reconnectTimeout: NodeJS.Timeout | null = null;
+  private isInitializing = false;
 
   private getSessionDir(): string {
+    const fixedPath = 'd:\\vijay\\whatsapp-bulk\\backend\\sessions\\active_device';
+    if (fs.existsSync('d:\\vijay\\whatsapp-bulk\\backend')) {
+      return fixedPath;
+    }
     const baseDir = fs.existsSync(path.resolve(process.cwd(), 'backend'))
       ? path.resolve(process.cwd(), 'backend')
       : process.cwd();
     return path.resolve(baseDir, 'sessions', 'active_device');
   }
 
+  /**
+   * Reads saved credentials to recover registered phone number even during reconnects or after restart
+   */
+  private getSavedRegisteredNumber(): string | null {
+    try {
+      const credsPath = path.join(this.getSessionDir(), 'creds.json');
+      if (fs.existsSync(credsPath)) {
+        const raw = fs.readFileSync(credsPath, 'utf8');
+        const data = JSON.parse(raw);
+        if (data?.me?.id) {
+          const clean = data.me.id.split(':')[0].replace(/[^\d]/g, '');
+          if (clean) return clean;
+        }
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  private isSessionRegistered(): boolean {
+    try {
+      const credsPath = path.join(this.getSessionDir(), 'creds.json');
+      if (fs.existsSync(credsPath)) {
+        const raw = fs.readFileSync(credsPath, 'utf8');
+        const data = JSON.parse(raw);
+        return !!(data?.registered || data?.me?.id);
+      }
+    } catch (e) {}
+    return false;
+  }
+
   async onModuleInit() {
+    // Restore connected number from disk if available
+    const saved = this.getSavedRegisteredNumber();
+    if (saved) {
+      this.connectedPhoneNumber = saved;
+      this.logger.log(`Found existing registered WhatsApp session for number: ${saved}`);
+    }
+
     this.initSocket().catch((err) => {
       this.logger.warn(`Deferred Baileys socket initialization: ${err.message}`);
     });
   }
 
+  /**
+   * Cleanly closes and removes all listeners from any previous socket instance
+   * to prevent duplicate connections (which cause status 440 connectionReplaced).
+   */
+  private cleanUpSocket() {
+    if (this.sock) {
+      try {
+        this.sock.ev.removeAllListeners('connection.update');
+        this.sock.ev.removeAllListeners('creds.update');
+        this.sock.ws?.close();
+        this.sock.end(undefined);
+      } catch (e) {}
+      this.sock = null;
+    }
+  }
+
+  /**
+   * Schedules a single, debounced reconnect attempt.
+   */
+  private scheduleReconnect(delayMs: number) {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+    this.reconnectTimeout = setTimeout(() => {
+      this.reconnectTimeout = null;
+      this.initSocket().catch((err) => {
+        this.logger.error(`Error in scheduled socket reconnect: ${err.message}`);
+      });
+    }, delayMs);
+  }
+
   async initSocket() {
+    if (this.isInitializing) {
+      this.logger.debug('Socket initialization already in progress, skipping duplicate call');
+      return;
+    }
+
+    this.isInitializing = true;
+    this.cleanUpSocket();
+
     const sessionDir = this.getSessionDir();
     if (!fs.existsSync(sessionDir)) {
       fs.mkdirSync(sessionDir, { recursive: true });
@@ -43,6 +126,12 @@ export class BaileysSessionService implements OnModuleInit {
 
       this.sessionState = 'CONNECTING';
 
+      // Ensure we keep existing registered phone number in memory
+      const savedNum = this.getSavedRegisteredNumber();
+      if (savedNum && !this.connectedPhoneNumber) {
+        this.connectedPhoneNumber = savedNum;
+      }
+
       this.sock = makeWASocket({
         auth: state,
         printQRInTerminal: false,
@@ -52,30 +141,44 @@ export class BaileysSessionService implements OnModuleInit {
         connectTimeoutMs: 60000,
         defaultQueryTimeoutMs: 60000,
         keepAliveIntervalMs: 25000,
+        retryRequestDelayMs: 2000,
+        maxMsgRetryCount: 5,
+        getMessage: async () => {
+          return {
+            conversation: 'SalesBuster keepalive',
+          };
+        },
       });
 
       this.sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
-          this.sessionState = 'SCAN_QR_REQUIRED';
-          try {
-            const qrLib: any = QRCode?.toDataURL ? QRCode : (QRCode as any)?.default || require('qrcode');
-            this.currentQrCodeDataUrl = await qrLib.toDataURL(qr, {
-              margin: 2,
-              scale: 6,
-              color: { dark: '#075E54', light: '#FFFFFF' },
-            });
-            this.logger.log('New WhatsApp pairing QR code generated. Ready to scan on phone!');
-          } catch (e: any) {
-            this.logger.error(`Failed to generate QR code data URL: ${e.message}`);
+          // Only show QR if device is not already registered
+          if (!this.isSessionRegistered()) {
+            this.sessionState = 'SCAN_QR_REQUIRED';
+            try {
+              const qrLib: any = QRCode?.toDataURL ? QRCode : (QRCode as any)?.default || require('qrcode');
+              this.currentQrCodeDataUrl = await qrLib.toDataURL(qr, {
+                margin: 2,
+                scale: 6,
+                color: { dark: '#075E54', light: '#FFFFFF' },
+              });
+              this.logger.log('New WhatsApp pairing QR code generated. Ready to scan on phone!');
+            } catch (e: any) {
+              this.logger.error(`Failed to generate QR code data URL: ${e.message}`);
+            }
           }
         }
 
         if (connection === 'open') {
           this.sessionState = 'ONLINE';
           this.currentQrCodeDataUrl = null;
-          this.connectedPhoneNumber = this.sock?.user?.id?.split(':')[0] || 'Linked Device';
+          const detected =
+            this.sock?.user?.id?.split(':')[0]?.replace(/[^\d]/g, '') ||
+            this.getSavedRegisteredNumber() ||
+            'Linked Device';
+          this.connectedPhoneNumber = detected;
           this.logger.log(`🟢 WhatsApp Multi-Device session is LIVE & ONLINE! Number: ${this.connectedPhoneNumber}`);
         }
 
@@ -85,38 +188,63 @@ export class BaileysSessionService implements OnModuleInit {
           this.logger.warn(`WhatsApp session closed (status: ${statusCode}). Logged out: ${isLoggedOut}`);
 
           if (isLoggedOut) {
+            // User explicitly logged out from mobile app
             this.sessionState = 'DISCONNECTED';
             this.connectedPhoneNumber = null;
             this.currentQrCodeDataUrl = null;
+            this.cleanUpSocket();
             if (fs.existsSync(sessionDir)) {
               fs.rmSync(sessionDir, { recursive: true, force: true });
             }
-            setTimeout(() => this.initSocket(), 1500);
-          } else {
-            // Crucial: Code 515 (restartRequired) is standard Baileys handshake immediately after QR scan.
-            // Do NOT purge credentials, simply reconnect to finalize pairing.
+            this.scheduleReconnect(1500);
+          } else if (statusCode === DisconnectReason.connectionReplaced) {
+            // Another connection opened with same creds. Delay to prevent thrashing loop.
+            this.logger.warn(`Session connection was replaced by another instance. Delaying reconnect to stabilize.`);
             this.sessionState = 'CONNECTING';
+            this.cleanUpSocket();
+            this.scheduleReconnect(5000);
+          } else {
+            // Normal transient drop (e.g. 515 restartRequired right after pairing, or 428 connectionClosed)
+            // DO NOT wipe credentials or connectedPhoneNumber!
+            this.sessionState = 'CONNECTING';
+            this.cleanUpSocket();
             const reconnectDelay = statusCode === DisconnectReason.restartRequired ? 500 : 2500;
-            this.logger.log(`Reconnecting WhatsApp session in ${reconnectDelay}ms...`);
-            setTimeout(() => this.initSocket(), reconnectDelay);
+            this.logger.log(`Reconnecting WhatsApp session in ${reconnectDelay}ms (Handset preserved: ${this.connectedPhoneNumber})...`);
+            this.scheduleReconnect(reconnectDelay);
           }
         }
       });
 
-      this.sock.ev.on('creds.update', saveCreds);
+      this.sock.ev.on('creds.update', async () => {
+        await saveCreds();
+        // Update connected phone number as soon as creds contain registration
+        const saved = this.getSavedRegisteredNumber();
+        if (saved && !this.connectedPhoneNumber) {
+          this.connectedPhoneNumber = saved;
+          this.logger.log(`WhatsApp credentials updated with phone number: ${saved}`);
+        }
+      });
     } catch (err: any) {
       this.logger.error(`Error initializing Baileys socket: ${err.message}`);
       this.sessionState = 'DISCONNECTED';
+    } finally {
+      this.isInitializing = false;
     }
   }
 
   getSessionStatus() {
     const isOnline = this.sessionState === 'ONLINE' && !!this.sock?.user;
+    const isConnecting = this.sessionState === 'CONNECTING';
+    const isRegistered = this.isSessionRegistered();
+    const registeredNumber = this.connectedPhoneNumber || this.getSavedRegisteredNumber();
+
     return {
       state: this.sessionState,
       isOnline,
-      qrCodeDataUrl: isOnline ? null : this.currentQrCodeDataUrl,
-      connectedNumber: isOnline ? this.connectedPhoneNumber : null,
+      isConnecting,
+      isRegistered,
+      qrCodeDataUrl: isOnline || isRegistered ? null : this.currentQrCodeDataUrl,
+      connectedNumber: registeredNumber,
     };
   }
 
@@ -128,6 +256,17 @@ export class BaileysSessionService implements OnModuleInit {
     text: string,
     buttons?: Array<{ id?: string; type: string; text: string; value?: string }>,
   ): Promise<{ success: boolean; messageId: string; error?: string }> {
+    // If briefly reconnecting, wait up to 4 seconds for online state
+    if (this.sessionState !== 'ONLINE') {
+      const waitStart = Date.now();
+      while (Date.now() - waitStart < 4000) {
+        if ((this.sessionState as any) === 'ONLINE' && this.sock) {
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 300));
+      }
+    }
+
     if (this.sessionState !== 'ONLINE' || !this.sock) {
       return {
         success: false,
@@ -181,20 +320,21 @@ export class BaileysSessionService implements OnModuleInit {
 
   /**
    * Resets uncompleted session and triggers a fresh, authentic WhatsApp QR code.
+   * If session is already linked, rejects to prevent accidental key destruction.
    */
   async generateFreshQr(): Promise<{ success: boolean; qrCodeDataUrl: string | null; error?: string }> {
-    if (this.sessionState === 'ONLINE') {
-      return { success: false, qrCodeDataUrl: null, error: `Device (${this.connectedPhoneNumber}) is already online.` };
+    if (this.sessionState === 'ONLINE' || this.isSessionRegistered()) {
+      const num = this.connectedPhoneNumber || this.getSavedRegisteredNumber() || 'Physical Handset';
+      return {
+        success: false,
+        qrCodeDataUrl: null,
+        error: `Device (${num}) is already linked. Click Logout in Virtual Numbers tab first if you want to unlink.`,
+      };
     }
 
     try {
       this.logger.log('Generating fresh real WhatsApp QR code...');
-      if (this.sock) {
-        try {
-          this.sock.end(undefined);
-        } catch (e) {}
-        this.sock = null;
-      }
+      this.cleanUpSocket();
 
       const sessionDir = this.getSessionDir();
       if (fs.existsSync(sessionDir)) {
@@ -238,32 +378,30 @@ export class BaileysSessionService implements OnModuleInit {
       clean = `91${clean}`;
     }
 
-    if (this.sessionState === 'ONLINE') {
+    if (this.sessionState === 'ONLINE' && this.connectedPhoneNumber) {
       throw new Error(`Device (${this.connectedPhoneNumber}) is already linked and online. Unlink first.`);
     }
 
     try {
       this.logger.log(`Preparing clean pairing handshake for number: ${clean}...`);
 
-      // 1. If not registered/online, reset uncompleted session state to avoid stale creds conflict
-      if (this.sock) {
-        try {
-          this.sock.end(undefined);
-        } catch (e) {}
-        this.sock = null;
-      }
+      // 1. Reset uncompleted session state to avoid stale creds conflict
+      this.cleanUpSocket();
 
       const sessionDir = this.getSessionDir();
       if (fs.existsSync(sessionDir)) {
         fs.rmSync(sessionDir, { recursive: true, force: true });
       }
 
+      this.connectedPhoneNumber = null;
+      this.currentQrCodeDataUrl = null;
+
       // 2. Initialize fresh socket
       await this.initSocket();
 
-      // 3. Wait until WebSocket is open and ready to accept IQ stanzas (max 10s)
+      // 3. Wait until WebSocket is open and ready to accept IQ stanzas (max 12s)
       const startTime = Date.now();
-      while (Date.now() - startTime < 10000) {
+      while (Date.now() - startTime < 12000) {
         if (this.sock && (this.sock.ws as any)?.isOpen) {
           break;
         }
@@ -275,7 +413,7 @@ export class BaileysSessionService implements OnModuleInit {
       }
 
       // Ensure initial hello handshake completes
-      await new Promise((r) => setTimeout(r, 1000));
+      await new Promise((r) => setTimeout(r, 1200));
 
       this.logger.log(`Requesting 8-digit WhatsApp pairing code for ${clean}...`);
       const code = await this.sock.requestPairingCode(clean);
@@ -289,9 +427,7 @@ export class BaileysSessionService implements OnModuleInit {
 
   async logout() {
     try {
-      if (this.sock) {
-        await this.sock.logout();
-      }
+      this.cleanUpSocket();
       const sessionDir = this.getSessionDir();
       if (fs.existsSync(sessionDir)) {
         fs.rmSync(sessionDir, { recursive: true, force: true });
@@ -299,11 +435,10 @@ export class BaileysSessionService implements OnModuleInit {
       this.sessionState = 'DISCONNECTED';
       this.connectedPhoneNumber = null;
       this.currentQrCodeDataUrl = null;
-      setTimeout(() => this.initSocket(), 1000);
+      this.scheduleReconnect(1000);
       return { success: true };
     } catch (e: any) {
       return { success: false, error: e.message };
     }
   }
 }
-
