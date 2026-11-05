@@ -385,6 +385,32 @@ export class DynamicStoreManager {
     }
   }
 
+  // Live WhatsApp delivery receipts from active WebSocket
+  async getMessageReceipts(): Promise<
+    Array<{
+      messageId: string;
+      status: 'SENT' | 'DELIVERED' | 'READ' | 'FAILED';
+      timestamp: number;
+    }>
+  > {
+    try {
+      const res = await apiClient.get('/session/receipts');
+      return res.data || [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // Pre-validate whether a phone number is registered on WhatsApp
+  async checkNumberOnWhatsApp(phoneNumber: string): Promise<{ exists: boolean; jid?: string }> {
+    try {
+      const res = await apiClient.post('/session/check-number', { phoneNumber });
+      return res.data;
+    } catch (e) {
+      return { exists: false };
+    }
+  }
+
   // Request 8-digit pairing code for existing number without QR scanning
   async requestPairingCode(phoneNumber: string): Promise<{
     success: boolean;

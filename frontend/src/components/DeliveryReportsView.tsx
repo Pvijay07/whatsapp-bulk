@@ -46,23 +46,37 @@ export const DeliveryReportsView: React.FC<DeliveryReportsViewProps> = ({
       ? campaignMessages
       : campaignMessages.filter((m) => m.status === statusFilter);
 
-  // Overall aggregates
-  const totalSent = activeCampaign
-    ? activeCampaign.sentCount
-    : messages.filter((m) => m.status !== "QUEUED").length;
-  const totalDelivered = activeCampaign
-    ? activeCampaign.deliveredCount
-    : messages.filter((m) => m.status === "DELIVERED" || m.status === "READ")
-        .length;
-  const totalRead = activeCampaign
-    ? activeCampaign.readCount
-    : messages.filter((m) => m.status === "READ").length;
-  const totalFailed = activeCampaign
-    ? activeCampaign.failedCount
-    : messages.filter((m) => m.status === "FAILED").length;
+  // Overall aggregates computed dynamically from actual dispatch logs
+  const totalSent =
+    campaignMessages.length > 0
+      ? campaignMessages.filter(
+          (m) =>
+            m.status === "SENT" ||
+            m.status === "DELIVERED" ||
+            m.status === "READ",
+        ).length
+      : activeCampaign?.sentCount || 0;
+
+  const totalDelivered =
+    campaignMessages.length > 0
+      ? campaignMessages.filter(
+          (m) => m.status === "DELIVERED" || m.status === "READ",
+        ).length
+      : activeCampaign?.deliveredCount || 0;
+
+  const totalRead =
+    campaignMessages.length > 0
+      ? campaignMessages.filter((m) => m.status === "READ").length
+      : activeCampaign?.readCount || 0;
+
+  const totalFailed =
+    campaignMessages.length > 0
+      ? campaignMessages.filter((m) => m.status === "FAILED").length
+      : activeCampaign?.failedCount || 0;
+
   const totalTarget = activeCampaign
     ? activeCampaign.totalContacts
-    : messages.length;
+    : campaignMessages.length;
 
   const deliveryRate =
     totalTarget > 0 ? Math.round((totalDelivered / totalTarget) * 100) : 0;

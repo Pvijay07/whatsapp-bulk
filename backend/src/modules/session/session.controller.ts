@@ -10,6 +10,31 @@ export class SessionController {
     return this.baileysService.getSessionStatus();
   }
 
+  /**
+   * Retrieves real-time delivery receipts (SENT / DELIVERED / READ / FAILED)
+   * from active WhatsApp WebSocket session.
+   */
+  @Get('receipts')
+  getReceipts() {
+    const statuses = this.baileysService.getMessageStatuses();
+    return Array.from(statuses.entries()).map(([messageId, data]) => ({
+      messageId,
+      ...data,
+    }));
+  }
+
+  /**
+   * Checks whether a phone number is registered on WhatsApp.
+   */
+  @Post('check-number')
+  @HttpCode(HttpStatus.OK)
+  async checkNumber(@Body() body: { phoneNumber: string }) {
+    if (!body.phoneNumber) {
+      throw new BadRequestException('phoneNumber is required');
+    }
+    return this.baileysService.checkNumberOnWhatsApp(body.phoneNumber);
+  }
+
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   async logout() {

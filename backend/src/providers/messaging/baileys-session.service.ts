@@ -22,6 +22,19 @@ export class BaileysSessionService implements OnModuleInit {
   private connectedPhoneNumber: string | null = null;
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private isInitializing = false;
+  private messageStatuses = new Map<
+    string,
+    {
+      status: 'SENT' | 'DELIVERED' | 'READ' | 'FAILED';
+      timestamp: number;
+      recipientJid?: string;
+      error?: string;
+    }
+  >();
+
+  getMessageStatuses() {
+    return this.messageStatuses;
+  }
 
   private getSessionDir(): string {
     const fixedPath = 'd:\\vijay\\whatsapp-bulk\\backend\\sessions\\active_device';
@@ -226,6 +239,36 @@ export class BaileysSessionService implements OnModuleInit {
           this.logger.log(`WhatsApp credentials updated with phone number: ${saved}`);
         }
       });
+
+      // Track live WhatsApp delivery receipts and read statuses
+      this.sock.ev.on('messages.update', (updates) => {
+        for (const update of updates) {
+          const msgId = update.key?.id;
+          if (!msgId) continue;
+          const statusVal = update.update?.status;
+          // WAMessageStatus: ERROR: 0, PENDING: 1, SERVER_ACK: 2, DELIVERY_ACK: 3, READ: 4, PLAYED: 5
+          let newStatus: 'SENT' | 'DELIVERED' | 'READ' | 'FAILED' | null = null;
+          if (statusVal === 3) {
+            newStatus = 'DELIVERED';
+          } else if (statusVal === 4 || statusVal === 5) {
+            newStatus = 'READ';
+          } else if (statusVal === 0) {
+            newStatus = 'FAILED';
+          } else if (statusVal === 2) {
+            newStatus = 'SENT';
+          }
+
+          if (newStatus) {
+            const existing = this.messageStatuses.get(msgId);
+            this.messageStatuses.set(msgId, {
+              status: newStatus,
+              timestamp: Date.now(),
+              recipientJid: update.key?.remoteJid || existing?.recipientJid,
+            });
+            this.logger.log(`Live WhatsApp Receipt update: [${msgId}] -> ${newStatus}`);
+          }
+        }
+      });
     } catch (err: any) {
       this.logger.error(`Error initializing Baileys socket: ${err.message}`);
       this.sessionState = 'DISCONNECTED';
@@ -295,6 +338,23 @@ export class BaileysSessionService implements OnModuleInit {
         clean = `91${clean}`;
       }
       const jid = `${clean}@s.whatsapp.net`;
+
+      // 1. Pre-flight verification: Check if recipient actually exists on WhatsApp
+      try {
+        const checkResults = await this.sock.onWhatsApp(clean);
+        const exists = checkResults && checkResults.length > 0 && !!checkResults[0]?.exists;
+        if (!exists) {
+          const errMsg = `Recipient number +${clean} is not registered on WhatsApp.`;
+          this.logger.warn(`❌ Message rejected: ${errMsg}`);
+          return {
+            success: false,
+            messageId: '',
+            error: errMsg,
+          };
+        }
+      } catch (checkErr: any) {
+        this.logger.warn(`WhatsApp onWhatsApp check warning: ${checkErr.message}`);
+      }
 
       // Format Action Buttons into authentic WhatsApp Click-to-Chat Deep Links (wa.me) & Rich Cards
       let finalText = text || '';
@@ -381,6 +441,12 @@ export class BaileysSessionService implements OnModuleInit {
       const realMsgId = sent?.key?.id || `VMSG-${clean}-${Date.now().toString(36)}`;
       this.logger.log(`✅ Message delivered to WhatsApp servers! Key ID: ${realMsgId}`);
 
+      this.messageStatuses.set(realMsgId, {
+        status: 'SENT',
+        timestamp: Date.now(),
+        recipientJid: jid,
+      });
+
       return {
         success: true,
         messageId: realMsgId,
@@ -392,6 +458,28 @@ export class BaileysSessionService implements OnModuleInit {
         messageId: '',
         error: err.message,
       };
+    }
+  }
+
+  /**
+   * Directly checks whether a given phone number is registered on WhatsApp.
+   */
+  async checkNumberOnWhatsApp(phoneNumber: string): Promise<{ exists: boolean; jid?: string }> {
+    if (this.sessionState !== 'ONLINE' || !this.sock) {
+      return { exists: false };
+    }
+    try {
+      let clean = phoneNumber.replace(/[^\d]/g, '');
+      if (clean.length === 10) clean = `91${clean}`;
+      const results = await this.sock.onWhatsApp(clean);
+      const matched = results && results.length > 0 && results[0]?.exists ? results[0] : null;
+      return {
+        exists: !!matched,
+        jid: matched?.jid,
+      };
+    } catch (err: any) {
+      this.logger.warn(`Failed checking number on WhatsApp: ${err.message}`);
+      return { exists: false };
     }
   }
 

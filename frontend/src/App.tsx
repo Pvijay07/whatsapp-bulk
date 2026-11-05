@@ -152,6 +152,37 @@ export const App: React.FC = () => {
           // If explicitly unlinked, remove the real-linked-session
           setVirtualNumbers((prev) => prev.filter((n) => n.id !== 'real-linked-session'));
         }
+
+        // Live delivery receipts sync (SENT -> DELIVERED -> READ -> FAILED)
+        const receipts = await dynamicStore.getMessageReceipts();
+        if (receipts && receipts.length > 0) {
+          const rMap = new Map(receipts.map((r) => [r.messageId, r]));
+          setMessages((prev) => {
+            let changed = false;
+            const updated = prev.map((m) => {
+              const r = rMap.get(m.providerMessageId);
+              if (r && r.status && m.status !== r.status && m.status !== 'FAILED') {
+                changed = true;
+                const timeStr = new Date(r.timestamp).toLocaleTimeString('en-IN', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit',
+                });
+                return {
+                  ...m,
+                  status: r.status,
+                  deliveredAt:
+                    r.status === 'DELIVERED' || r.status === 'READ'
+                      ? m.deliveredAt || timeStr
+                      : m.deliveredAt,
+                  readAt: r.status === 'READ' ? m.readAt || timeStr : m.readAt,
+                };
+              }
+              return m;
+            });
+            return changed ? updated : prev;
+          });
+        }
       } catch (e) {}
     };
 
@@ -273,8 +304,9 @@ export const App: React.FC = () => {
               ? {
                   ...m,
                   status: 'FAILED',
-                  errorCode: 'SESSION_OFFLINE',
-                  providerMessageId: res.error || 'Device not linked',
+                  errorCode: res.error?.includes('not registered') ? 'NOT_ON_WHATSAPP' : 'DISPATCH_FAILED',
+                  providerMessageId: res.error || 'Recipient not on WhatsApp',
+                  costINR: '0.00',
                 }
               : m,
           ),
@@ -288,7 +320,7 @@ export const App: React.FC = () => {
             ? {
                 ...c,
                 sentCount,
-                deliveredCount: sentCount,
+                deliveredCount: 0,
                 failedCount,
                 status: i === data.recipients.length - 1 ? 'COMPLETED' : 'SENDING',
               }
