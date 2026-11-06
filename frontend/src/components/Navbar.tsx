@@ -61,12 +61,12 @@ export const Navbar: React.FC<NavbarProps> = ({
     },
     {
       id: 'numbers',
-      label: 'Virtual Numbers (+91)',
+      label: 'Virtual Numbers',
       icon: PhoneCall,
     },
     {
       id: 'wallet',
-      label: 'Wallet & Ledger',
+      label: 'Wallet',
       icon: Wallet,
       badge: `₹${walletBalanceINR}`,
       isWalletBadge: true,
@@ -90,7 +90,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           {/* Navigation Links: ONLY the 5 before tabs */}
-          <nav className="hidden md:flex items-center space-x-1.5">
+          <nav className="hidden md:flex items-center space-x-1 lg:space-x-1.5 shrink-0">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = currentTab === item.id;
@@ -99,21 +99,21 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <button
                   key={item.id}
                   onClick={() => onSelectTab(item.id)}
-                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                  className={`flex items-center gap-1.5 lg:gap-2 px-2.5 lg:px-3.5 py-2 rounded-xl text-xs font-semibold transition-all whitespace-nowrap shrink-0 ${
                     isActive
                       ? 'bg-[#e8f7fa] text-[#00897b] font-bold shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                   }`}
                 >
                   <Icon
-                    className={`w-3.5 h-3.5 ${
+                    className={`w-3.5 h-3.5 shrink-0 ${
                       isActive ? 'text-[#00897b]' : 'text-slate-400 group-hover:text-slate-600'
                     }`}
                   />
-                  <span>{item.label}</span>
+                  <span className="whitespace-nowrap select-none">{item.label}</span>
                   {item.badge && (
                     <span
-                      className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                      className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold whitespace-nowrap shrink-0 ${
                         item.isWalletBadge
                           ? 'bg-[#e6fffa] text-[#00a79d] border border-[#99f6e4]'
                           : isActive
