@@ -298,7 +298,7 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">Leads Directory</h2>
+            <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">Contacts</h2>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#e0f2fe] text-[#0284c7] border border-[#bae6fd]">
               Management View
             </span>

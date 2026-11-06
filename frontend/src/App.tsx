@@ -874,7 +874,7 @@ export const App: React.FC = () => {
               </p>
               <div className="pt-2 flex justify-center gap-3">
                 <a
-                  href="https://wa.me/918897727709?text=Hi%20SalesBuster%20Support%2C%20I%20need%20help"
+                  href="https://wa.me/917997887788?text=Hi%20SalesBuster%20Support%2C%20I%20need%20help"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="px-4 py-2 bg-[#00b493] hover:bg-[#009e81] text-white rounded-xl text-xs font-bold transition shadow-xs"

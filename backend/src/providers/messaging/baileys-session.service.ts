@@ -4,6 +4,8 @@ import makeWASocket, {
   useMultiFileAuthState,
   WASocket,
   Browsers,
+  proto,
+  generateWAMessageFromContent,
 } from '@whiskeysockets/baileys';
 import * as QRCode from 'qrcode';
 import * as path from 'path';
@@ -600,40 +602,69 @@ export class BaileysSessionService implements OnModuleInit {
         this.logger.warn(`WhatsApp onWhatsApp check warning: ${checkErr.message}`);
       }
 
-      // Format Action Buttons into authentic WhatsApp Click-to-Chat Deep Links (wa.me)
+      // Clean message body text - DO NOT append button links into message content text!
       let finalText = text || '';
-      if (buttons && buttons.length > 0) {
-        const senderClean = (
-          session.connectedPhoneNumber ||
-          this.getSavedRegisteredNumber(session.sessionId) ||
-          '918897727709'
-        ).replace(/[^\d]/g, '');
-
-        const actionLines = buttons.map((b) => {
-          const typeUpper = (b.type || 'QUICK_REPLY').toUpperCase();
-          if (typeUpper === 'URL') {
-            const url = b.value || 'https://example.com';
-            return `🌐 *${b.text}*\n   🔗 ${url}`;
-          } else if (typeUpper === 'PHONE') {
-            let phone = (b.value || '').replace(/[^\d+]/g, '');
-            if (!phone.startsWith('+') && phone.length === 10) phone = `+91${phone}`;
-            return `📞 *${b.text}*\n   📲 ${phone}`;
-          } else {
-            const replyText = b.text.replace(/^[^\w\s]+/g, '').trim() || b.text;
-            const encoded = encodeURIComponent(replyText);
-            const deepLink = `https://wa.me/${senderClean}?text=${encoded}`;
-            return `💬 *${b.text}* (Tap to Instant Reply):\n   👉 ${deepLink}`;
-          }
-        });
-
-        finalText = finalText
-          ? `${finalText}\n\n━━━━━━━━━━━━━━━━━━━━\n${actionLines.join('\n\n')}\n━━━━━━━━━━━━━━━━━━━━`
-          : `━━━━━━━━━━━━━━━━━━━━\n${actionLines.join('\n\n')}\n━━━━━━━━━━━━━━━━━━━━`;
-      }
-
       let sent: any;
 
-      if (media && (media.base64 || media.url)) {
+      if (buttons && buttons.length > 0 && (!media || (!media.base64 && !media.url))) {
+        // Transmit authentic WhatsApp Interactive Message (Native Flow Button)
+        const b = buttons.find((btn) => (btn.type || '').toUpperCase() === 'QUICK_REPLY') || buttons[0];
+        const buttonText = b.text || '🎁 Claim 25% Off';
+        const targetClean = (b.value || '917997887788').replace(/[^\d]/g, '') || '917997887788';
+        const replyText = buttonText.replace(/^[^\w\s]+/g, '').trim() || buttonText;
+        const encoded = encodeURIComponent(replyText);
+
+        try {
+          this.logger.log(`Transmitting native interactive button via [${session.label}] to ${jid}...`);
+          const interactiveMsg = proto.Message.InteractiveMessage.create({
+            body: proto.Message.InteractiveMessage.Body.create({
+              text: finalText,
+            }),
+            footer: proto.Message.InteractiveMessage.Footer.create({
+              text: 'salesbuster.ai Gateway',
+            }),
+            header: proto.Message.InteractiveMessage.Header.create({
+              title: '',
+              subtitle: '',
+              hasMediaAttachment: false,
+            }),
+            nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
+              buttons: [
+                {
+                  name: 'cta_url',
+                  buttonParamsJson: JSON.stringify({
+                    display_text: buttonText,
+                    url: `https://wa.me/${targetClean}?text=${encoded}`,
+                    merchant_url: `https://wa.me/${targetClean}`,
+                  }),
+                },
+              ],
+            }),
+          });
+
+          const waMsg = generateWAMessageFromContent(
+            jid,
+            {
+              viewOnceMessage: {
+                message: {
+                  messageContextInfo: {
+                    deviceListMetadata: {},
+                    deviceListMetadataVersion: 2,
+                  },
+                  interactiveMessage: interactiveMsg,
+                },
+              },
+            },
+            { userJid: sock.user?.id },
+          );
+
+          await sock.relayMessage(jid, waMsg.message!, { messageId: waMsg.key.id! });
+          sent = waMsg;
+        } catch (relayErr: any) {
+          this.logger.warn(`Interactive button relay failed (${relayErr.message}), falling back to direct message`);
+          sent = await sock.sendMessage(jid, { text: finalText });
+        }
+      } else if (media && (media.base64 || media.url)) {
         let mediaBuffer: Buffer | null = null;
         if (media.base64) {
           const cleanB64 = media.base64.replace(/^data:[^;]+;base64,/, '');

@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 import {
   Users,
   Send,
@@ -9,9 +9,14 @@ import {
   Zap,
   AlertCircle,
   Sun,
-} from 'lucide-react';
+} from "lucide-react";
 
-export type BeforeTabId = 'crm' | 'campaigns' | 'reports' | 'numbers' | 'wallet';
+export type BeforeTabId =
+  | "crm"
+  | "campaigns"
+  | "reports"
+  | "numbers"
+  | "wallet";
 
 interface NavItem {
   id: BeforeTabId;
@@ -43,30 +48,30 @@ export const Navbar: React.FC<NavbarProps> = ({
   // ONLY the 5 tabs from before
   const navItems: NavItem[] = [
     {
-      id: 'crm',
-      label: 'Contacts',
+      id: "crm",
+      label: "Contacts",
       icon: Users,
       badge: contactsCount !== undefined ? `${contactsCount}` : undefined,
     },
     {
-      id: 'campaigns',
-      label: 'Campaigns',
+      id: "campaigns",
+      label: "Campaigns",
       icon: Send,
       badge: activeCampaignsCount > 0 ? `${activeCampaignsCount}` : undefined,
     },
     {
-      id: 'reports',
-      label: 'Delivery Reports',
+      id: "reports",
+      label: "Delivery Reports",
       icon: BarChart3,
     },
     {
-      id: 'numbers',
-      label: 'Virtual Numbers',
+      id: "numbers",
+      label: "Virtual Numbers",
       icon: PhoneCall,
     },
     {
-      id: 'wallet',
-      label: 'Wallet',
+      id: "wallet",
+      label: "Wallet",
       icon: Wallet,
       badge: `₹${walletBalanceINR}`,
       isWalletBadge: true,
@@ -80,7 +85,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Official salesbuster.ai Brand Logo */}
           <div
             className="flex items-center cursor-pointer shrink-0 select-none py-1"
-            onClick={() => onSelectTab('crm')}
+            onClick={() => onSelectTab("crm")}
           >
             <img
               src="/logo.png"
@@ -101,24 +106,28 @@ export const Navbar: React.FC<NavbarProps> = ({
                   onClick={() => onSelectTab(item.id)}
                   className={`flex items-center gap-1.5 lg:gap-2 px-2.5 lg:px-3.5 py-2 rounded-xl text-xs font-semibold transition-all whitespace-nowrap shrink-0 ${
                     isActive
-                      ? 'bg-[#e8f7fa] text-[#00897b] font-bold shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                      ? "bg-[#e8f7fa] text-[#00897b] font-bold shadow-2xs"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
                   }`}
                 >
                   <Icon
                     className={`w-3.5 h-3.5 shrink-0 ${
-                      isActive ? 'text-[#00897b]' : 'text-slate-400 group-hover:text-slate-600'
+                      isActive
+                        ? "text-[#00897b]"
+                        : "text-slate-400 group-hover:text-slate-600"
                     }`}
                   />
-                  <span className="whitespace-nowrap select-none">{item.label}</span>
+                  <span className="whitespace-nowrap select-none">
+                    {item.label}
+                  </span>
                   {item.badge && (
                     <span
                       className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold whitespace-nowrap shrink-0 ${
                         item.isWalletBadge
-                          ? 'bg-[#e6fffa] text-[#00a79d] border border-[#99f6e4]'
+                          ? "bg-[#e6fffa] text-[#00a79d] border border-[#99f6e4]"
                           : isActive
-                          ? 'bg-[#00897b] text-white'
-                          : 'bg-slate-100 text-slate-500'
+                            ? "bg-[#00897b] text-white"
+                            : "bg-slate-100 text-slate-500"
                       }`}
                     >
                       {item.badge}
@@ -134,7 +143,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* Live Handset Status */}
             {isOnline && (
               <div
-                onClick={() => onSelectTab('numbers')}
+                onClick={() => onSelectTab("numbers")}
                 className="hidden lg:flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 cursor-pointer hover:bg-emerald-100 transition"
                 title="WhatsApp Handset Connected"
               >
@@ -184,8 +193,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                 onClick={() => onSelectTab(item.id)}
                 className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
                   isActive
-                    ? 'bg-[#e8f7fa] text-[#00897b] font-bold'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    ? "bg-[#e8f7fa] text-[#00897b] font-bold"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />

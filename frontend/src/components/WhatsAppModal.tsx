@@ -138,12 +138,10 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
     templates[0]?.bodyText || '{Hello|Hi|Greetings} {{1}}! We have an exclusive festive offer for you today. Reply with YES to receive your coupon code!',
   );
 
-  // Interactive CTA & Quick Reply Buttons (wa.me Click-to-Chat)
+  // Interactive Single Quick Reply Action Button (directing to 917997887788)
   const [buttonsEnabled, setButtonsEnabled] = useState(true);
   const [campaignButtons, setCampaignButtons] = useState<CampaignActionButton[]>([
-    { id: 'btn-1', type: 'QUICK_REPLY', text: '🎁 Claim 25% Off' },
-    { id: 'btn-2', type: 'URL', text: '🌐 Visit Website', value: 'https://example.com' },
-    { id: 'btn-3', type: 'PHONE', text: '📞 Call Support', value: '+919876543210' },
+    { id: 'btn-interactive', type: 'QUICK_REPLY', text: '🎁 Claim 25% Off', value: '917997887788' },
   ]);
 
   // Media Attachment (Images, Documents / PDFs, Videos, Audio)
@@ -220,23 +218,15 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
     }
   };
 
-  const handleAddButton = () => {
-    if (campaignButtons.length >= 3) return;
-    const newId = `btn-${Date.now()}`;
+  const handleUpdateInteractiveButton = (updates: { text?: string; value?: string }) => {
     setCampaignButtons((prev) => [
-      ...prev,
-      { id: newId, type: 'QUICK_REPLY', text: `Button ${prev.length + 1}` },
+      {
+        id: prev[0]?.id || 'btn-interactive',
+        type: 'QUICK_REPLY',
+        text: updates.text !== undefined ? updates.text : (prev[0]?.text || '🎁 Claim 25% Off'),
+        value: updates.value !== undefined ? updates.value : (prev[0]?.value || '917997887788'),
+      },
     ]);
-  };
-
-  const handleRemoveButton = (id: string) => {
-    setCampaignButtons((prev) => prev.filter((b) => b.id !== id));
-  };
-
-  const handleUpdateButton = (id: string, updates: Partial<CampaignActionButton>) => {
-    setCampaignButtons((prev) =>
-      prev.map((b) => (b.id === id ? { ...b, ...updates } : b)),
-    );
   };
 
   // Anti-Ban & Humanized Controls
@@ -303,20 +293,8 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
 
   const senderPreviewNum = (sessionStatus.connectedNumber || '918897727709').replace(/[^\d]/g, '');
 
-  if (buttonsEnabled && campaignButtons.length > 0) {
-    const actionLines = campaignButtons.map((b) => {
-      if (b.type === 'URL') {
-        return `🌐 *${b.text}*\n   🔗 ${b.value || 'https://example.com'}`;
-      } else if (b.type === 'PHONE') {
-        return `📞 *${b.text}*\n   📲 ${b.value || '+919876543210'}`;
-      } else {
-        const replyText = b.text.replace(/^[^\w\s]+/g, '').trim() || b.text;
-        const encoded = encodeURIComponent(replyText);
-        return `💬 *${b.text}* (Tap to Instant Reply):\n   👉 https://wa.me/${senderPreviewNum}?text=${encoded}`;
-      }
-    });
-    renderedBody = `${renderedBody}\n\n━━━━━━━━━━━━━━━━━━━━\n${actionLines.join('\n\n')}\n━━━━━━━━━━━━━━━━━━━━`;
-  }
+  // Message body remains 100% clean without appending button link text.
+  // The interactive button renders purely as an authentic WhatsApp button element below the message.
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
@@ -685,16 +663,16 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
               />
             </div>
 
-            {/* Interactive Action Buttons (wa.me & CTA Links) */}
+            {/* Interactive Action Button (1-Click wa.me directed to 917997887788) */}
             <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                     <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                    Interactive Click-to-Chat Buttons (wa.me & CTA Links)
+                    Interactive Click-to-Chat Button (wa.me)
                   </div>
                   <div className="text-[11px] text-slate-500">
-                    Generates 1-tap wa.me Quick Replies, website links, and click-to-call phone numbers.
+                    Sends an authentic interactive button attached to your message.
                   </div>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
@@ -709,80 +687,44 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
               </div>
 
               {buttonsEnabled && (
-                <div className="space-y-2 pt-1 border-t border-slate-200/80">
-                  {campaignButtons.map((btn, index) => (
-                    <div
-                      key={btn.id}
-                      className="p-2.5 bg-white border border-slate-200 rounded-xl space-y-2 shadow-2xs"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 w-5 h-5 rounded-full flex items-center justify-center shrink-0">
-                          {index + 1}
-                        </span>
+                <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-3 shadow-2xs">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-slate-700 block">
+                      Interactive Button Text
+                    </label>
+                    <input
+                      type="text"
+                      value={campaignButtons[0]?.text || ''}
+                      onChange={(e) => handleUpdateInteractiveButton({ text: e.target.value })}
+                      placeholder="e.g. 🎁 Claim 25% Off"
+                      className="w-full px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 bg-white"
+                      maxLength={35}
+                    />
+                  </div>
 
-                        <select
-                          value={btn.type}
-                          onChange={(e) =>
-                            handleUpdateButton(btn.id, {
-                              type: e.target.value as any,
-                              value:
-                                e.target.value === 'URL'
-                                  ? 'https://example.com'
-                                  : e.target.value === 'PHONE'
-                                  ? '+919876543210'
-                                  : '',
-                            })
-                          }
-                          className="px-2 py-1 text-xs border border-slate-300 rounded-lg bg-white shrink-0 focus:ring-1 focus:ring-emerald-500 font-medium"
-                        >
-                          <option value="QUICK_REPLY">👉 Quick Reply</option>
-                          <option value="URL">🔗 Visit Website (URL)</option>
-                          <option value="PHONE">📞 Call Phone</option>
-                        </select>
-
-                        <input
-                          type="text"
-                          value={btn.text}
-                          onChange={(e) => handleUpdateButton(btn.id, { text: e.target.value })}
-                          placeholder="Button Label (e.g. Claim Offer)"
-                          className="flex-1 px-2.5 py-1 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 font-medium"
-                          maxLength={30}
-                        />
-
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveButton(btn.id)}
-                          className="text-slate-400 hover:text-rose-600 p-1"
-                          title="Remove Button"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-
-                      {btn.type !== 'QUICK_REPLY' && (
-                        <div className="pl-7">
-                          <input
-                            type="text"
-                            value={btn.value || ''}
-                            onChange={(e) => handleUpdateButton(btn.id, { value: e.target.value })}
-                            placeholder={btn.type === 'URL' ? 'https://yourwebsite.com' : '+91 98765 43210'}
-                            className="w-full px-2.5 py-1 text-[11px] font-mono border border-slate-200 rounded-lg bg-slate-50 focus:bg-white focus:ring-1 focus:ring-emerald-500"
-                          />
-                        </div>
-                      )}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-slate-700">
+                        Target Reply WhatsApp Number
+                      </label>
+                      <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                        Target: 917997887788
+                      </span>
                     </div>
-                  ))}
-
-                  {campaignButtons.length < 3 && (
-                    <button
-                      type="button"
-                      onClick={handleAddButton}
-                      className="w-full py-1.5 border border-dashed border-emerald-400 text-[#128C7E] hover:bg-emerald-50 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      Add Action Button ({campaignButtons.length}/3)
-                    </button>
-                  )}
+                    <div className="relative flex items-center">
+                      <span className="absolute left-3 text-xs font-mono text-slate-400 font-bold">+</span>
+                      <input
+                        type="text"
+                        value={campaignButtons[0]?.value || '917997887788'}
+                        onChange={(e) => handleUpdateInteractiveButton({ value: e.target.value })}
+                        placeholder="917997887788"
+                        className="w-full pl-6 pr-3 py-1.5 text-xs font-mono font-bold border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 bg-slate-50 focus:bg-white"
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400">
+                      When clicked, replies from the recipient are sent directly to this WhatsApp number.
+                    </p>
+                  </div>
                 </div>
               )}
             </div>
@@ -957,20 +899,13 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Action Links Preview if enabled */}
+                  {/* Single Native Action Button Mockup (Pill below message bubble) */}
                   {buttonsEnabled && campaignButtons.length > 0 && (
-                    <div className="border-t border-slate-100 divide-y divide-slate-100 bg-slate-50/70">
-                      {campaignButtons.map((btn) => (
-                        <div
-                          key={btn.id}
-                          className="py-1.5 px-3 text-center text-xs font-semibold text-[#128C7E] flex items-center justify-center gap-1.5 hover:bg-emerald-50/80 transition"
-                        >
-                          {btn.type === 'URL' && <ExternalLink className="w-3.5 h-3.5 text-[#128C7E]" />}
-                          {btn.type === 'PHONE' && <PhoneCall className="w-3.5 h-3.5 text-[#128C7E]" />}
-                          {btn.type === 'QUICK_REPLY' && <CornerDownLeft className="w-3.5 h-3.5 text-[#128C7E]" />}
-                          <span className="truncate">{btn.text || 'Action'}</span>
-                        </div>
-                      ))}
+                    <div className="border-t border-slate-100 bg-white">
+                      <div className="py-2.5 px-3 text-center text-xs font-bold text-[#128C7E] flex items-center justify-center gap-1.5 hover:bg-emerald-50/60 transition cursor-pointer select-none">
+                        <CornerDownLeft className="w-3.5 h-3.5 text-[#128C7E]" />
+                        <span className="truncate">{campaignButtons[0]?.text || '🎁 Claim 25% Off'}</span>
+                      </div>
                     </div>
                   )}
                 </div>
