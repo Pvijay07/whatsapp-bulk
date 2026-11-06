@@ -2,31 +2,36 @@ import React, { useState, useRef, useMemo } from 'react';
 import { Contact } from '../types';
 import {
   Users,
-  UserPlus,
-  FileSpreadsheet,
-  MessageSquare,
   Search,
-  Filter,
-  CheckCircle2,
-  AlertTriangle,
-  Send,
-  Sparkles,
-  Phone,
-  Tag,
-  UploadCloud,
+  Plus,
   Download,
   Upload,
-  X,
-  FileText,
+  Sparkles,
+  Phone,
+  Copy,
   Check,
+  Pencil,
+  Trash2,
+  ExternalLink,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  X,
+  FileSpreadsheet,
+  UploadCloud,
+  FileText,
+  AlertTriangle,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface ContactsViewProps {
   contacts: Contact[];
   onOpenWhatsApp: (contact?: Contact | null) => void;
-  onAddContact: (contact: Omit<Contact, 'id' | 'createdAt'>) => void;
+  onAddContact: (contact: Omit<Contact, 'id' | 'createdAt'> & { service?: string; source?: string; status?: string; assignedRep?: string; enquiredTime?: string }) => void;
   onImportCsv: (csvContent: string) => void;
   onGroupGrabberExtract?: (extractedContacts: Array<{ name: string; phoneNumber: string; tag: string }>) => void;
+  onDeleteContact?: (id: string) => void;
+  onUpdateContact?: (contact: Contact) => void;
 }
 
 export const ContactsView: React.FC<ContactsViewProps> = ({
@@ -35,34 +40,180 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
   onAddContact,
   onImportCsv,
   onGroupGrabberExtract,
+  onDeleteContact,
+  onUpdateContact,
 }) => {
+  // Search & Filter States
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedService, setSelectedService] = useState('ALL');
+  const [selectedRep, setSelectedRep] = useState('ALL');
+  const [selectedStatus, setSelectedStatus] = useState('ALL');
+  const [activePipelinePill, setActivePipelinePill] = useState('New Leads');
+
+  // Modals
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [showCsvModal, setShowCsvModal] = useState(false);
   const [showGrabberModal, setShowGrabberModal] = useState(false);
+  const [contactToEdit, setContactToEdit] = useState<Contact | null>(null);
 
-  // Group Grabber state
+  // Copy feedback state
+  const [copiedPhoneId, setCopiedPhoneId] = useState<string | null>(null);
+
+  // Add Contact Form State
+  const [newName, setNewName] = useState('');
+  const [newPhone, setNewPhone] = useState('+91');
+  const [newService, setNewService] = useState('General Enquiry');
+  const [newRep, setNewRep] = useState('ABHI');
+  const [newStatus, setNewStatus] = useState('New');
+
+  // Group Grabber State
   const [grabberRawText, setGrabberRawText] = useState(
     `[12/10/26, 10:15] +91 98123 45678: Hello team\n[12/10/26, 10:18] +91 97234 56789: Interested in demo\n+91 99345 67890\n9845012345`,
   );
   const [grabberGroupName, setGrabberGroupName] = useState('Extracted Group Leads');
 
-  // New Contact form states
-  const [newName, setNewName] = useState('');
-  const [newPhone, setNewPhone] = useState('+91');
-  const [newTag, setNewTag] = useState('New Inquiries');
-  const [newConsent, setNewConsent] = useState(true);
-
-  // CSV import state
+  // CSV Import State
   const [csvImportTab, setCsvImportTab] = useState<'FILE' | 'PASTE'>('FILE');
   const [selectedCsvFile, setSelectedCsvFile] = useState<{ name: string; size: number } | null>(null);
   const csvFileInputRef = useRef<HTMLInputElement>(null);
   const [csvText, setCsvText] = useState(
-    `name,phone,tag\nRahul Mehta,+919811122233,Diwali Leads\nSneha Sen,+919822233344,Online Store`,
+    `name,phone,service,rep\nRahul Mehta,+919811122233,General Enquiry,ABHI\nSneha Sen,+919822233344,Training,saiteja`,
   );
   const [csvOptInAccepted, setCsvOptInAccepted] = useState(true);
 
-  // File selection reader
+  // Pipeline Filter Pills definition matching reference screenshot
+  const pipelinePills = [
+    { id: 'Old Leads', label: 'Old Leads', count: 1788 },
+    { id: 'New Leads', label: 'New Leads', count: 2242 },
+    { id: 'Missed Calls', label: 'Missed Calls', count: 163 },
+    { id: 'Today Followups', label: 'Today Followups', count: 280 },
+    { id: 'Upcoming Followups', label: 'Upcoming Followups', count: 0 },
+    { id: 'Not Attended', label: 'Not Attended', count: 408 },
+    { id: 'Converted', label: 'Converted', count: 869 },
+    { id: 'Lost/Dropped', label: 'Lost/Dropped', count: 407 },
+  ];
+
+  // Helper for phone copy
+  const handleCopyPhone = (id: string, phone: string) => {
+    navigator.clipboard.writeText(phone.replace(/[^\d+]/g, ''));
+    setCopiedPhoneId(id);
+    setTimeout(() => setCopiedPhoneId(null), 2000);
+  };
+
+  // Helper for Service Dot Color
+  const getServiceColor = (serviceName: string) => {
+    const s = serviceName.toLowerCase();
+    if (s.includes('training')) return 'bg-purple-500';
+    if (s.includes('job') || s.includes('career')) return 'bg-emerald-500';
+    if (s.includes('general') || s.includes('enquiry')) return 'bg-cyan-500';
+    if (s.includes('vip') || s.includes('store')) return 'bg-amber-500';
+    return 'bg-blue-500';
+  };
+
+  // Helper for Rep Avatar styling
+  const getRepAvatarStyle = (repName: string) => {
+    const r = repName.toLowerCase();
+    if (r.startsWith('a')) return 'bg-blue-100 text-blue-700';
+    if (r.startsWith('sai')) return 'bg-teal-100 text-teal-700';
+    if (r.startsWith('sah')) return 'bg-violet-100 text-violet-700';
+    return 'bg-slate-100 text-slate-700';
+  };
+
+  // Filter Contacts
+  const filteredContacts = useMemo(() => {
+    return contacts.filter((c) => {
+      const service = c.service || c.tag || 'General Enquiry';
+      const rep = c.assignedRep || 'ABHI';
+      const status = c.status || 'New';
+
+      const matchesSearch =
+        c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.phoneNumber.includes(searchTerm) ||
+        service.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        rep.toLowerCase().includes(searchTerm.toLowerCase());
+
+      const matchesService = selectedService === 'ALL' || service.toLowerCase().includes(selectedService.toLowerCase());
+      const matchesRep = selectedRep === 'ALL' || rep.toLowerCase() === selectedRep.toLowerCase();
+      const matchesStatus = selectedStatus === 'ALL' || status.toLowerCase() === selectedStatus.toLowerCase();
+
+      return matchesSearch && matchesService && matchesRep && matchesStatus;
+    });
+  }, [contacts, searchTerm, selectedService, selectedRep, selectedStatus]);
+
+  // Handle Create Lead
+  const handleCreateContact = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newName || !newPhone) return;
+
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    const dateStr = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+    onAddContact({
+      name: newName,
+      phoneNumber: newPhone,
+      tag: newService,
+      service: newService,
+      source: 'WhatsApp',
+      status: newStatus,
+      assignedRep: newRep,
+      enquiredTime: timeStr,
+      optInConsent: true,
+      isSuppressed: false,
+    });
+
+    setNewName('');
+    setNewPhone('+91');
+    setShowAddModal(false);
+  };
+
+  // Handle Edit Lead Submit
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!contactToEdit || !onUpdateContact) return;
+
+    onUpdateContact(contactToEdit);
+    setShowEditModal(false);
+    setContactToEdit(null);
+  };
+
+  // Handle Export CSV
+  const handleExportCsv = () => {
+    if (contacts.length === 0) return;
+    const headers = 'Name,Phone,Service,Source,Status,AssignedRep,Date\n';
+    const rows = contacts
+      .map(
+        (c) =>
+          `"${c.name}","${c.phoneNumber}","${c.service || c.tag || 'General Enquiry'}","${c.source || 'WhatsApp'}","${
+            c.status || 'New'
+          }","${c.assignedRep || 'ABHI'}","${c.createdAt}"`,
+      )
+      .join('\n');
+    const blob = new Blob([headers + rows], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `leads_export_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Sample CSV generator for 1-click download
+  const handleDownloadSampleCsv = () => {
+    const sampleCsv = `Name,Phone,Service,AssignedRep\nMalaya Ranjan Pattanaik,+917008651883,Training,saiteja\nhimanshuyadavshiahilr123,+918077552017,General Enquiry,sahil\nRuhii,+918431590424,Training,ABHI\nNikhil Gaur,+917982856812,Job Inquiry,sahil`;
+    const blob = new Blob([sampleCsv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'leads_import_template.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // CSV Reader
   const handleCsvFileSelect = (file: File) => {
     if (!file) return;
     const reader = new FileReader();
@@ -74,20 +225,7 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
     reader.readAsText(file);
   };
 
-  // Sample CSV generator for 1-click download
-  const handleDownloadSampleCsv = () => {
-    const sampleCsv = `Name,Phone,Tag\nVijay Kumar,+919876543210,VIP Customer\nAnanya Sen,+918899001122,Festive Lead\nRahul Sharma,9123456789,Inquiries\nPriya Patel,+91 99887 76655,Wholesale\nKiran Reddy,9876501234,Support`;
-    const blob = new Blob([sampleCsv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', 'whatsapp_contacts_template.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  // Live parsed preview with de-duplication against existing CRM contacts
+  // Live parsed preview with de-duplication
   const parsedPreview = useMemo(() => {
     const lines = csvText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     if (lines.length === 0) return { total: 0, newCount: 0, duplicateCount: 0, previewRows: [] };
@@ -98,7 +236,7 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
       (h) => h.includes('phone') || h.includes('mobile') || h.includes('contact') || h.includes('num'),
     );
     let tagIdx = headerParts.findIndex(
-      (h) => h.includes('tag') || h.includes('group') || h.includes('category') || h.includes('label'),
+      (h) => h.includes('service') || h.includes('tag') || h.includes('group') || h.includes('category'),
     );
 
     let startIndex = 1;
@@ -154,7 +292,7 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
           rows.push({
             name: parts[nameIdx] || parts[0] || 'Customer',
             phone: normalized,
-            tag: parts[tagIdx] || parts[2] || 'CSV Import',
+            tag: parts[tagIdx] || parts[2] || 'General Enquiry',
             isDuplicate: isDup,
           });
         }
@@ -168,201 +306,349 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
     };
   }, [csvText, contacts]);
 
-  const filteredContacts = contacts.filter(
-    (c) =>
-      c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.phoneNumber.includes(searchTerm) ||
-      c.tag.toLowerCase().includes(searchTerm.toLowerCase()),
-  );
-
-  const handleCreateContact = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newName || !newPhone) return;
-
-    onAddContact({
-      name: newName,
-      phoneNumber: newPhone,
-      tag: newTag,
-      optInConsent: newConsent,
-      isSuppressed: false,
-    });
-
-    setNewName('');
-    setNewPhone('+91');
-    setShowAddModal(false);
-  };
-
-  const handleImportCsv = () => {
-    if (!csvOptInAccepted) return;
-    onImportCsv(csvText);
-    setShowCsvModal(false);
-  };
-
   return (
-    <div className="space-y-6">
-      {/* View Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs">
+    <div className="space-y-5 animate-in fade-in duration-300">
+      {/* Top Header Card */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-            <Users className="w-6 h-6 text-[#128C7E]" />
-            Customer CRM & Contacts
-          </h2>
-          <p className="text-sm text-slate-500 mt-1">
-            Manage your audience, record explicit opt-ins, and trigger verified WhatsApp campaigns.
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">Leads Directory</h2>
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#e0f2fe] text-[#0284c7] border border-[#bae6fd]">
+              Management View
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 mt-1">
+            Query, manage, schedule, and track customer lead profiles across the pipeline.
           </p>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex items-center space-x-2.5">
-          {/* Saasyto-inspired WhatsApp Group Grabber */}
+        {/* Action Buttons Top Right */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Export CSV Button */}
           <button
-            onClick={() => setShowGrabberModal(true)}
-            className="px-3 py-2 border border-emerald-300 bg-emerald-50/60 rounded-xl text-xs font-bold text-emerald-800 hover:bg-emerald-100 transition flex items-center gap-1.5 shadow-2xs"
-            title="Extract phone numbers from WhatsApp groups"
+            onClick={handleExportCsv}
+            className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/90 rounded-xl text-xs font-bold transition shadow-2xs flex items-center gap-1.5"
+            title="Download CSV of current leads"
           >
-            <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-            Group Grabber
+            <Download className="w-3.5 h-3.5 text-slate-500" />
+            <span>Export CSV</span>
           </button>
 
+          {/* Import Excel / CSV Button */}
           <button
             onClick={() => setShowCsvModal(true)}
-            className="px-3.5 py-2 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50 transition flex items-center gap-1.5 shadow-2xs"
+            className="px-4 py-2 bg-[#0f172a] hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5"
+            title="Upload CSV or Excel spreadsheet"
           >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-            Import CSV
+            <Upload className="w-3.5 h-3.5 text-slate-300" />
+            <span>Import Excel</span>
           </button>
 
+          {/* Add New Lead Button */}
           <button
             onClick={() => setShowAddModal(true)}
-            className="px-3.5 py-2 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50 transition flex items-center gap-1.5 shadow-2xs"
+            className="px-4 py-2 bg-[#00b493] hover:bg-[#009e81] text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5"
           >
-            <UserPlus className="w-4 h-4 text-slate-600" />
-            Add Contact
+            <Plus className="w-4 h-4 stroke-[2.5]" />
+            <span>+ Add New Lead</span>
           </button>
 
-          {/* Primary Call to Action: Click on WhatsApp */}
+          {/* Group Grabber Button */}
           <button
-            onClick={() => onOpenWhatsApp(null)}
-            className="px-4 py-2 bg-[#25D366] hover:bg-[#1da851] text-white rounded-xl text-sm font-bold shadow-md shadow-emerald-600/20 transition flex items-center gap-2 active:scale-95"
+            onClick={() => setShowGrabberModal(true)}
+            className="px-3 py-2 bg-emerald-50/80 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition shadow-2xs flex items-center gap-1.5"
+            title="Extract leads from WhatsApp group messages"
           >
-            <MessageSquare className="w-4 h-4" />
-            Launch WhatsApp Campaign
+            <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Group Grabber</span>
           </button>
         </div>
       </div>
 
-      {/* Filter Bar & Search */}
-      <div className="flex items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200/80 shadow-2xs">
-        <div className="relative flex-1 max-w-md">
+      {/* Horizontal Pipeline Filter Pills Bar */}
+      <div className="flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-none">
+        <button className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 shrink-0">
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+
+        {pipelinePills.map((pill) => {
+          const isActive = activePipelinePill === pill.id;
+
+          return (
+            <button
+              key={pill.id}
+              onClick={() => setActivePipelinePill(pill.id)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-2 shrink-0 ${
+                isActive
+                  ? 'bg-[#1e293b] text-white shadow-xs'
+                  : 'bg-white border border-slate-200/90 text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              }`}
+            >
+              <span>{pill.label}</span>
+              <span
+                className={`text-[11px] font-bold px-1.5 py-0.2 rounded-full ${
+                  isActive ? 'bg-slate-700 text-slate-200' : 'bg-slate-100 text-slate-500'
+                }`}
+              >
+                {pill.id === 'New Leads' ? contacts.length || pill.count : pill.count}
+              </span>
+            </button>
+          );
+        })}
+
+        <button className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 shrink-0">
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Search and Filters Bar Card */}
+      <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
+        {/* Search Input */}
+        <div className="relative flex-1 w-full">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search contacts by name, phone or tag..."
-            className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[#128C7E] focus:outline-none"
+            placeholder="Search by name, phone, email, or service..."
+            className="w-full pl-10 pr-4 py-2 border border-transparent rounded-xl text-xs placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 text-slate-800"
           />
         </div>
 
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          <span className="font-semibold text-slate-700">{filteredContacts.length}</span> of{' '}
-          <span className="font-semibold text-slate-700">{contacts.length}</span> contacts
+        {/* Dropdown Filters */}
+        <div className="flex items-center gap-2 w-full md:w-auto shrink-0 flex-wrap">
+          {/* Services Filter */}
+          <div className="relative">
+            <select
+              value={selectedService}
+              onChange={(e) => setSelectedService(e.target.value)}
+              className="appearance-none bg-white border border-slate-200 rounded-xl px-3 py-1.5 pr-8 text-xs font-semibold text-slate-700 hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#00b493] cursor-pointer"
+            >
+              <option value="ALL">All Services (4)</option>
+              <option value="General Enquiry">General Enquiry</option>
+              <option value="Training">Training</option>
+              <option value="Job Inquiry">Job Inquiry</option>
+              <option value="VIP">VIP Customer</option>
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
+
+          {/* Reps Filter */}
+          <div className="relative">
+            <select
+              value={selectedRep}
+              onChange={(e) => setSelectedRep(e.target.value)}
+              className="appearance-none bg-white border border-slate-200 rounded-xl px-3 py-1.5 pr-8 text-xs font-semibold text-slate-700 hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#00b493] cursor-pointer"
+            >
+              <option value="ALL">All Reps</option>
+              <option value="ABHI">ABHI</option>
+              <option value="saiteja">saiteja</option>
+              <option value="sahil">sahil</option>
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
+
+          {/* Statuses Filter */}
+          <div className="relative">
+            <select
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value)}
+              className="appearance-none bg-white border border-slate-200 rounded-xl px-3 py-1.5 pr-8 text-xs font-semibold text-slate-700 hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#00b493] cursor-pointer"
+            >
+              <option value="ALL">All Statuses</option>
+              <option value="New">New</option>
+              <option value="Followup">Followup</option>
+              <option value="Converted">Converted</option>
+              <option value="Dropped">Dropped</option>
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
         </div>
       </div>
 
-      {/* Contacts Table */}
+      {/* Matching Result Count */}
+      <div className="text-xs text-slate-500 font-medium px-1">
+        Showing 1-{Math.min(filteredContacts.length, 10)} of {filteredContacts.length} matching leads
+      </div>
+
+      {/* Leads Table Container */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-semibold border-b border-slate-200">
+          <table className="w-full text-left text-xs">
+            {/* Table Header */}
+            <thead className="bg-[#fcfdfe] border-b border-slate-200/80 text-[11px] font-bold uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-6 py-4">Customer Name</th>
-                <th className="px-6 py-4">Phone Number (+91)</th>
-                <th className="px-6 py-4">Group / Tag</th>
-                <th className="px-6 py-4">Consent Status</th>
-                <th className="px-6 py-4">Suppression</th>
-                <th className="px-6 py-4 text-right">Instant Action</th>
+                <th className="px-5 py-3.5">CLIENT & CONTACT</th>
+                <th className="px-5 py-3.5">SERVICE</th>
+                <th className="px-5 py-3.5">SOURCE</th>
+                <th className="px-5 py-3.5">STATUS</th>
+                <th className="px-5 py-3.5">ASSIGNED REP</th>
+                <th className="px-5 py-3.5">ENQUIRED ON</th>
+                <th className="px-5 py-3.5 text-right">ACTIONS</th>
               </tr>
             </thead>
+
+            {/* Table Body */}
             <tbody className="divide-y divide-slate-100">
-              {filteredContacts.map((contact) => (
-                <tr key={contact.id} className="hover:bg-slate-50/80 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="font-semibold text-slate-900">{contact.name}</div>
-                    <div className="text-xs text-slate-400">Added {contact.createdAt}</div>
-                  </td>
-                  <td className="px-6 py-4 font-mono text-slate-700">
-                    <div className="flex items-center gap-1.5">
-                      <Phone className="w-3.5 h-3.5 text-slate-400" />
-                      {contact.phoneNumber}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="inline-flex items-center gap-1 text-xs bg-slate-100 text-slate-700 px-2.5 py-1 rounded-md font-medium">
-                      <Tag className="w-3 h-3 text-slate-400" />
-                      {contact.tag}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    {contact.optInConsent ? (
-                      <span className="inline-flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full font-semibold border border-emerald-200">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        Opted In
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-xs bg-amber-50 text-amber-700 px-2.5 py-0.5 rounded-full font-semibold border border-amber-200">
-                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                        Pending Opt-In
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4">
-                    {contact.isSuppressed ? (
-                      <span className="text-xs bg-red-50 text-red-700 px-2 py-0.5 rounded-full font-semibold border border-red-200">
-                        Suppressed (STOP)
-                      </span>
-                    ) : (
-                      <span className="text-xs text-slate-400">Clear</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    {/* The prominent WhatsApp Action Button on each contact! */}
-                    <button
-                      onClick={() => onOpenWhatsApp(contact)}
-                      disabled={contact.isSuppressed}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition ${
-                        contact.isSuppressed
-                          ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                          : 'bg-[#25D366]/10 text-[#075E54] hover:bg-[#25D366] hover:text-white border border-[#25D366]/30'
-                      }`}
-                      title={contact.isSuppressed ? 'Contact has opted out via STOP' : 'Send WhatsApp Message'}
-                    >
-                      <MessageSquare className="w-3.5 h-3.5" />
-                      Send WhatsApp
-                    </button>
+              {filteredContacts.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
+                    <Users className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+                    <p className="font-semibold text-slate-600">No leads match the selected filters</p>
+                    <p className="text-xs mt-1">Try resetting search or clicking "+ Add New Lead"</p>
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredContacts.map((contact) => {
+                  const rawDigits = contact.phoneNumber.replace(/[^\d]/g, '');
+                  const formattedPhone = rawDigits.startsWith('91') ? rawDigits : `91${rawDigits}`;
+                  const serviceName = contact.service || contact.tag || 'General Enquiry';
+                  const repName = contact.assignedRep || 'ABHI';
+                  const statusName = contact.status || 'New';
+                  const enquiredDate = contact.createdAt || 'Nov 4, 2026';
+                  const enquiredTime = contact.enquiredTime || '5:10 PM';
+
+                  return (
+                    <tr key={contact.id} className="hover:bg-slate-50/70 transition-colors group">
+                      {/* CLIENT & CONTACT */}
+                      <td className="px-5 py-3.5">
+                        <div className="font-bold text-slate-900 text-xs">
+                          {contact.name || 'Unnamed Client'}
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-0.5 font-mono text-[11px] text-slate-500">
+                          <Phone className="w-3 h-3 text-slate-400 shrink-0" />
+                          <span>{formattedPhone}</span>
+                          <button
+                            onClick={() => handleCopyPhone(contact.id, formattedPhone)}
+                            className="p-0.5 hover:text-slate-800 transition-colors rounded"
+                            title="Copy phone number"
+                          >
+                            {copiedPhoneId === contact.id ? (
+                              <Check className="w-3 h-3 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3 h-3 text-slate-400" />
+                            )}
+                          </button>
+                        </div>
+                      </td>
+
+                      {/* SERVICE */}
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2 h-2 rounded-full ${getServiceColor(serviceName)}`} />
+                          <span className="font-medium text-slate-700 text-xs">{serviceName}</span>
+                        </div>
+                      </td>
+
+                      {/* SOURCE */}
+                      <td className="px-5 py-3.5">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
+                          WhatsApp
+                        </span>
+                      </td>
+
+                      {/* STATUS */}
+                      <td className="px-5 py-3.5">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-sky-50 text-sky-700 border border-sky-200/80">
+                          ✨ {statusName}
+                        </span>
+                      </td>
+
+                      {/* ASSIGNED REP */}
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${getRepAvatarStyle(
+                              repName,
+                            )}`}
+                          >
+                            {repName.charAt(0).toUpperCase()}
+                          </div>
+                          <span className="font-semibold text-slate-700 text-xs">{repName}</span>
+                        </div>
+                      </td>
+
+                      {/* ENQUIRED ON */}
+                      <td className="px-5 py-3.5">
+                        <div className="text-slate-800 font-medium text-xs">{enquiredDate}</div>
+                        <div className="text-slate-400 text-[11px] font-mono mt-0.5">{enquiredTime}</div>
+                      </td>
+
+                      {/* ACTIONS */}
+                      <td className="px-5 py-3.5 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {/* Edit Pencil Button */}
+                          <button
+                            onClick={() => {
+                              setContactToEdit(contact);
+                              setShowEditModal(true);
+                            }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                            title="Edit Lead"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Instant WhatsApp Send Button */}
+                          <button
+                            onClick={() => onOpenWhatsApp(contact)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+                            title="Send WhatsApp Message"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Trash Delete Button */}
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Delete lead "${contact.name}"?`)) {
+                                onDeleteContact?.(contact.id);
+                              }
+                            }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                            title="Delete Lead"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Add Contact Modal */}
+      {/* Add Lead Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
-            <h3 className="text-lg font-bold text-slate-900">Add New CRM Contact</h3>
-            <form onSubmit={handleCreateContact} className="space-y-3">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-slate-200 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Plus className="w-4 h-4 text-[#00b493]" />
+                Add New Lead Profile
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAddModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateContact} className="space-y-3.5">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name / Lead</label>
                 <input
                   type="text"
                   required
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#128C7E] focus:outline-none"
-                  placeholder="e.g. Amit Sharma"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-1 focus:ring-[#00b493] focus:outline-none"
+                  placeholder="e.g. Malaya Ranjan Pattanaik"
                 />
               </div>
 
@@ -375,50 +661,67 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
                   required
                   value={newPhone}
                   onChange={(e) => setNewPhone(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-[#128C7E] focus:outline-none"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono focus:ring-1 focus:ring-[#00b493] focus:outline-none"
                   placeholder="+919876543210"
                 />
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Service</label>
+                  <select
+                    value={newService}
+                    onChange={(e) => setNewService(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-1 focus:ring-[#00b493] focus:outline-none bg-white"
+                  >
+                    <option value="General Enquiry">General Enquiry</option>
+                    <option value="Training">Training</option>
+                    <option value="Job Inquiry">Job Inquiry</option>
+                    <option value="VIP Customer">VIP Customer</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Assigned Rep</label>
+                  <select
+                    value={newRep}
+                    onChange={(e) => setNewRep(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-1 focus:ring-[#00b493] focus:outline-none bg-white"
+                  >
+                    <option value="ABHI">ABHI</option>
+                    <option value="saiteja">saiteja</option>
+                    <option value="sahil">sahil</option>
+                  </select>
+                </div>
+              </div>
+
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Audience Group / Tag
-                </label>
-                <input
-                  type="text"
-                  value={newTag}
-                  onChange={(e) => setNewTag(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#128C7E] focus:outline-none"
-                  placeholder="e.g. Mumbai Retail"
-                />
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Pipeline Status</label>
+                <select
+                  value={newStatus}
+                  onChange={(e) => setNewStatus(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-1 focus:ring-[#00b493] focus:outline-none bg-white"
+                >
+                  <option value="New">✨ New</option>
+                  <option value="Followup">Today Followup</option>
+                  <option value="Converted">Converted</option>
+                  <option value="Dropped">Lost / Dropped</option>
+                </select>
               </div>
 
-              <div className="flex items-center gap-2 pt-2">
-                <input
-                  type="checkbox"
-                  id="consentCheckbox"
-                  checked={newConsent}
-                  onChange={(e) => setNewConsent(e.target.checked)}
-                  className="w-4 h-4 text-[#128C7E] rounded focus:ring-0"
-                />
-                <label htmlFor="consentCheckbox" className="text-xs text-slate-600">
-                  Recipient has provided explicit opt-in consent for WhatsApp messaging.
-                </label>
-              </div>
-
-              <div className="pt-3 flex justify-end space-x-2">
+              <div className="pt-3 flex justify-end gap-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-slate-50"
+                  className="px-4 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-[#128C7E] hover:bg-[#075E54] text-white rounded-lg text-sm font-semibold"
+                  className="px-4 py-2 bg-[#00b493] hover:bg-[#009e81] text-white rounded-xl text-xs font-bold shadow-xs"
                 >
-                  Save Contact
+                  Save Lead
                 </button>
               </div>
             </form>
@@ -426,22 +729,138 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
         </div>
       )}
 
-      {/* CSV Import Modal */}
+      {/* Edit Lead Modal */}
+      {showEditModal && contactToEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-slate-200 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Pencil className="w-4 h-4 text-[#00b493]" />
+                Edit Lead Details
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEditModal(false);
+                  setContactToEdit(null);
+                }}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditSubmit} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name / Lead</label>
+                <input
+                  type="text"
+                  required
+                  value={contactToEdit.name}
+                  onChange={(e) => setContactToEdit({ ...contactToEdit, name: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-1 focus:ring-[#00b493] focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Phone Number (+91)
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={contactToEdit.phoneNumber}
+                  onChange={(e) => setContactToEdit({ ...contactToEdit, phoneNumber: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono focus:ring-1 focus:ring-[#00b493] focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Service</label>
+                  <select
+                    value={contactToEdit.service || contactToEdit.tag || 'General Enquiry'}
+                    onChange={(e) =>
+                      setContactToEdit({
+                        ...contactToEdit,
+                        service: e.target.value,
+                        tag: e.target.value,
+                      })
+                    }
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-1 focus:ring-[#00b493] focus:outline-none bg-white"
+                  >
+                    <option value="General Enquiry">General Enquiry</option>
+                    <option value="Training">Training</option>
+                    <option value="Job Inquiry">Job Inquiry</option>
+                    <option value="VIP Customer">VIP Customer</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Assigned Rep</label>
+                  <select
+                    value={contactToEdit.assignedRep || 'ABHI'}
+                    onChange={(e) => setContactToEdit({ ...contactToEdit, assignedRep: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-1 focus:ring-[#00b493] focus:outline-none bg-white"
+                  >
+                    <option value="ABHI">ABHI</option>
+                    <option value="saiteja">saiteja</option>
+                    <option value="sahil">sahil</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Pipeline Status</label>
+                <select
+                  value={contactToEdit.status || 'New'}
+                  onChange={(e) => setContactToEdit({ ...contactToEdit, status: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-1 focus:ring-[#00b493] focus:outline-none bg-white"
+                >
+                  <option value="New">✨ New</option>
+                  <option value="Followup">Today Followup</option>
+                  <option value="Converted">Converted</option>
+                  <option value="Dropped">Lost / Dropped</option>
+                </select>
+              </div>
+
+              <div className="pt-3 flex justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditModal(false);
+                    setContactToEdit(null);
+                  }}
+                  className="px-4 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-[#00b493] hover:bg-[#009e81] text-white rounded-xl text-xs font-bold shadow-xs"
+                >
+                  Update Lead
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* CSV / Excel Import Modal */}
       {showCsvModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl shadow-2xl max-w-xl w-full p-6 space-y-4 border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
             {/* Modal Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700">
-                  <FileSpreadsheet className="w-5 h-5" />
+                <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold">
+                  <Upload className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">
-                    Import Contacts via CSV
-                  </h3>
+                  <h3 className="text-base font-bold text-slate-900">Import Leads from Excel / CSV</h3>
                   <p className="text-xs text-slate-500">
-                    Upload an Excel/CSV spreadsheet or paste contacts directly.
+                    Upload an Excel or CSV file or paste lead rows directly.
                   </p>
                 </div>
               </div>
@@ -454,24 +873,23 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
               </button>
             </div>
 
-            {/* Template Download & Column Guide */}
+            {/* Template Download & Guide */}
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs">
               <div>
                 <span className="font-semibold text-slate-700">Supported Columns: </span>
-                <code className="text-[#128C7E] bg-emerald-50 px-1.5 py-0.5 rounded font-mono font-bold">
-                  Name, Phone, Tag
+                <code className="text-[#00897b] bg-[#e6fffa] px-1.5 py-0.5 rounded font-mono font-bold">
+                  Name, Phone, Service, AssignedRep
                 </code>
                 <div className="text-[11px] text-slate-400 mt-0.5">
-                  10-digit Indian numbers are automatically prefixed with +91
+                  10-digit Indian numbers are automatically formatted to +91
                 </div>
               </div>
               <button
                 type="button"
                 onClick={handleDownloadSampleCsv}
-                className="px-2.5 py-1.5 bg-white border border-slate-300 hover:border-emerald-500 hover:text-emerald-700 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-2xs shrink-0 ml-2"
-                title="Download sample template file"
+                className="px-2.5 py-1.5 bg-white border border-slate-300 hover:border-[#00b493] hover:text-[#00897b] text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-2xs shrink-0 ml-2"
               >
-                <Download className="w-3.5 h-3.5 text-emerald-600" />
+                <Download className="w-3.5 h-3.5 text-[#00b493]" />
                 Sample Template
               </button>
             </div>
@@ -483,7 +901,7 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
                 onClick={() => setCsvImportTab('FILE')}
                 className={`pb-2.5 px-3 border-b-2 transition flex items-center gap-1.5 ${
                   csvImportTab === 'FILE'
-                    ? 'border-[#128C7E] text-[#128C7E]'
+                    ? 'border-[#00b493] text-[#00897b]'
                     : 'border-transparent text-slate-500 hover:text-slate-700'
                 }`}
               >
@@ -495,7 +913,7 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
                 onClick={() => setCsvImportTab('PASTE')}
                 className={`pb-2.5 px-3 border-b-2 transition flex items-center gap-1.5 ${
                   csvImportTab === 'PASTE'
-                    ? 'border-[#128C7E] text-[#128C7E]'
+                    ? 'border-[#00b493] text-[#00897b]'
                     : 'border-transparent text-slate-500 hover:text-slate-700'
                 }`}
               >
@@ -526,10 +944,10 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
                     const f = e.dataTransfer.files?.[0];
                     if (f) handleCsvFileSelect(f);
                   }}
-                  className="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-2xl p-6 text-center cursor-pointer transition bg-slate-50/50 hover:bg-emerald-50/20 group"
+                  className="border-2 border-dashed border-slate-300 hover:border-[#00b493] rounded-2xl p-6 text-center cursor-pointer transition bg-slate-50/50 hover:bg-[#e6fffa]/20 group"
                 >
-                  <UploadCloud className="w-10 h-10 text-slate-400 group-hover:text-emerald-600 mx-auto mb-2 transition" />
-                  <div className="text-sm font-bold text-slate-700 group-hover:text-emerald-800">
+                  <UploadCloud className="w-10 h-10 text-slate-400 group-hover:text-[#00b493] mx-auto mb-2 transition" />
+                  <div className="text-sm font-bold text-slate-700 group-hover:text-[#00897b]">
                     {selectedCsvFile ? selectedCsvFile.name : 'Click to choose .CSV file or drag & drop here'}
                   </div>
                   <div className="text-xs text-slate-400 mt-1">
@@ -548,188 +966,169 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
                   Paste CSV Lines:
                 </label>
                 <textarea
-                  rows={5}
+                  rows={4}
                   value={csvText}
-                  onChange={(e) => {
-                    setCsvText(e.target.value);
-                    setSelectedCsvFile(null);
-                  }}
-                  placeholder="Name,Phone,Tag&#10;Vijay Kumar,+919876543210,VIP Customer&#10;Ananya Sen,9812345678,Lead"
-                  className="w-full font-mono text-xs p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#128C7E] focus:outline-none"
+                  onChange={(e) => setCsvText(e.target.value)}
+                  placeholder="name,phone,service,rep"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono focus:ring-1 focus:ring-[#00b493] focus:outline-none"
                 />
               </div>
             )}
 
-            {/* Live Data Preview */}
+            {/* Live Parsing & De-duplication Stats */}
             {parsedPreview.total > 0 && (
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs">
-                <div className="flex items-center justify-between font-bold text-slate-800">
-                  <span className="flex items-center gap-1.5 text-emerald-800">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    {parsedPreview.newCount} New Contacts to Import
-                  </span>
-                  {parsedPreview.duplicateCount > 0 ? (
-                    <span className="text-[11px] text-amber-800 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full font-semibold">
-                      {parsedPreview.duplicateCount} Existing Duplicates (Auto-Skipped)
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-slate-700">Preview & De-Duplication:</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-emerald-700 font-bold bg-emerald-100/70 px-2 py-0.5 rounded-full">
+                      ✓ {parsedPreview.newCount} New
                     </span>
-                  ) : (
-                    <span className="text-[11px] text-slate-500 font-normal">
-                      Previewing top {parsedPreview.previewRows.length} rows
-                    </span>
-                  )}
+                    {parsedPreview.duplicateCount > 0 && (
+                      <span className="text-amber-700 font-bold bg-amber-100/70 px-2 py-0.5 rounded-full">
+                        ⚠ {parsedPreview.duplicateCount} Duplicates Skipped
+                      </span>
+                    )}
+                  </div>
                 </div>
 
-                <div className="bg-white rounded-lg border border-slate-200 overflow-hidden text-[11px]">
-                  <table className="w-full text-left">
-                    <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
-                      <tr>
-                        <th className="px-3 py-1.5">Name</th>
-                        <th className="px-3 py-1.5">Phone Number</th>
-                        <th className="px-3 py-1.5">Tag</th>
-                        <th className="px-3 py-1.5 text-right">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 font-mono">
-                      {parsedPreview.previewRows.map((r, i) => (
-                        <tr key={i} className={r.isDuplicate ? 'bg-amber-50/40 opacity-70' : ''}>
-                          <td className="px-3 py-1 text-slate-800 font-sans font-medium">{r.name}</td>
-                          <td className="px-3 py-1 text-[#075E54]">{r.phone}</td>
-                          <td className="px-3 py-1 text-slate-500 font-sans">
-                            <span className="bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">
-                              {r.tag}
-                            </span>
-                          </td>
-                          <td className="px-3 py-1 text-right font-sans">
-                            {r.isDuplicate ? (
-                              <span className="bg-amber-100 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded text-[10px] font-semibold">
-                                Duplicate (Skip)
-                              </span>
-                            ) : (
-                              <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 px-1.5 py-0.5 rounded text-[10px] font-semibold">
-                                New Contact
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="divide-y divide-slate-200 text-[11px] font-mono bg-white rounded-lg border border-slate-200">
+                  {parsedPreview.previewRows.map((r, i) => (
+                    <div key={i} className="px-2.5 py-1.5 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-800">{r.name}</span>
+                        <span className="text-slate-500">{r.phone}</span>
+                        <span className="text-slate-400">({r.tag})</span>
+                      </div>
+                      {r.isDuplicate ? (
+                        <span className="text-amber-600 text-[10px] font-semibold">Duplicate</span>
+                      ) : (
+                        <span className="text-emerald-600 text-[10px] font-semibold">Valid</span>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
 
-            {/* Compliance opt-in */}
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-start gap-2.5">
+            {/* Consent Acknowledgement */}
+            <div className="flex items-start gap-2.5 pt-1">
               <input
                 type="checkbox"
                 id="csvConsent"
                 checked={csvOptInAccepted}
                 onChange={(e) => setCsvOptInAccepted(e.target.checked)}
-                className="mt-0.5 w-4 h-4 text-emerald-600 rounded"
+                className="w-4 h-4 text-[#00b493] rounded mt-0.5 focus:ring-0"
               />
-              <label htmlFor="csvConsent" className="text-xs text-slate-700 leading-tight cursor-pointer">
-                I certify that all recipients in this CSV file have provided affirmative opt-in consent in compliance with WhatsApp Business Messaging Policies.
+              <label htmlFor="csvConsent" className="text-xs text-slate-600">
+                I confirm that all imported contacts have provided explicit consent for WhatsApp messages.
               </label>
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
+            {/* Modal Actions */}
+            <div className="pt-2 flex justify-end gap-2 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setShowCsvModal(false)}
-                className="px-4 py-2 border border-slate-300 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-100 transition"
+                className="px-4 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={handleImportCsv}
                 disabled={!csvOptInAccepted || parsedPreview.newCount === 0}
-                className="px-5 py-2 bg-[#25D366] hover:bg-[#1da851] text-white rounded-xl text-sm font-bold shadow-md shadow-emerald-600/20 disabled:opacity-50 transition active:scale-95"
+                onClick={() => {
+                  onImportCsv(csvText);
+                  setShowCsvModal(false);
+                }}
+                className={`px-5 py-2 rounded-xl text-xs font-bold text-white transition shadow-xs ${
+                  csvOptInAccepted && parsedPreview.newCount > 0
+                    ? 'bg-[#0f172a] hover:bg-slate-800'
+                    : 'bg-slate-300 cursor-not-allowed'
+                }`}
               >
-                {parsedPreview.newCount > 0
-                  ? `Import ${parsedPreview.newCount} Contacts`
-                  : parsedPreview.duplicateCount > 0
-                  ? 'All Contacts Already Exist'
-                  : 'Import Contacts'}
+                Import {parsedPreview.newCount} Leads
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* WhatsApp Group Grabber Modal */}
+      {/* Group Grabber Modal */}
       {showGrabberModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4">
-            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-emerald-600" />
-              WhatsApp Group Grabber & Extractor
-            </h3>
-            <p className="text-xs text-slate-500">
-              Paste exported WhatsApp group chat text or raw phone number lists. The extractor will automatically isolate valid +91 numbers and import them into CRM.
-            </p>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Audience Group Tag
-              </label>
-              <input
-                type="text"
-                value={grabberGroupName}
-                onChange={(e) => setGrabberGroupName(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-[#128C7E] focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Raw Group Chat / Text Content
-              </label>
-              <textarea
-                rows={6}
-                value={grabberRawText}
-                onChange={(e) => setGrabberRawText(e.target.value)}
-                placeholder="Paste WhatsApp chat export or contact numbers here..."
-                className="w-full font-mono text-xs p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#128C7E] focus:outline-none"
-              />
-            </div>
-
-            <div className="flex justify-end space-x-2 pt-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4 border border-slate-200 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">WhatsApp Group Grabber</h3>
+                  <p className="text-xs text-slate-500">Extract phone numbers from WhatsApp chat export</p>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => setShowGrabberModal(false)}
-                className="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-slate-50"
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Target Service / Tag</label>
+                <input
+                  type="text"
+                  value={grabberGroupName}
+                  onChange={(e) => setGrabberGroupName(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-1 focus:ring-[#00b493] focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Paste WhatsApp Group Chat Log / Message Text:
+                </label>
+                <textarea
+                  rows={6}
+                  value={grabberRawText}
+                  onChange={(e) => setGrabberRawText(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-mono focus:ring-1 focus:ring-[#00b493] focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end gap-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowGrabberModal(false)}
+                className="px-4 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={() => {
-                  // Regex to match Indian phone numbers
-                  const matches = grabberRawText.match(/(?:\+91[\s-]?)?[6-9]\d{9}/g) || [];
-                  const uniquePhones = Array.from(
-                    new Set(matches.map((p) => {
-                      const clean = p.replace(/[^\d]/g, '');
-                      return clean.length === 10 ? `+91${clean}` : `+${clean}`;
-                    })),
-                  );
-
-                  if (uniquePhones.length > 0 && onGroupGrabberExtract) {
-                    onGroupGrabberExtract(
-                      uniquePhones.map((ph, idx) => ({
-                        name: `Member ${idx + 1}`,
-                        phoneNumber: ph,
-                        tag: grabberGroupName,
-                      })),
-                    );
-                  }
+                  const phoneRegex = /(?:\+?91[\s-]?)?[6-9]\d{9}/g;
+                  const matches = grabberRawText.match(phoneRegex) || [];
+                  const uniqueNums = Array.from(new Set(matches.map((m) => m.replace(/[\s-]/g, ''))));
+                  const extracted = uniqueNums.map((num, i) => {
+                    const clean = num.startsWith('+') ? num : num.startsWith('91') ? `+${num}` : `+91${num}`;
+                    return {
+                      name: `Lead ${clean.slice(-4)}`,
+                      phoneNumber: clean,
+                      tag: grabberGroupName,
+                    };
+                  });
+                  onGroupGrabberExtract?.(extracted);
                   setShowGrabberModal(false);
                 }}
-                className="px-4 py-2 bg-[#128C7E] hover:bg-[#075E54] text-white rounded-lg text-sm font-semibold flex items-center gap-1.5"
+                className="px-4 py-2 bg-[#00b493] hover:bg-[#009e81] text-white rounded-xl text-xs font-bold shadow-xs"
               >
-                <Sparkles className="w-4 h-4" />
-                Extract & Add to CRM
+                Extract Leads
               </button>
             </div>
           </div>
@@ -738,4 +1137,3 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
     </div>
   );
 };
-

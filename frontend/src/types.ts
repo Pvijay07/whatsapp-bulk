@@ -6,6 +6,11 @@ export interface Contact {
   optInConsent: boolean;
   tag: string;
   createdAt: string;
+  service?: string;
+  source?: string;
+  status?: string;
+  assignedRep?: string;
+  enquiredTime?: string;
 }
 
 export interface VirtualNumber {
