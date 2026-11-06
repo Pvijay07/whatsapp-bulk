@@ -77,15 +77,16 @@ export const Navbar: React.FC<NavbarProps> = ({
     <header className="sticky top-0 z-40 w-full bg-white border-b border-slate-200/80 shadow-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 gap-4">
-          {/* Brand Logo matching salesbuster.ai */}
+          {/* Official salesbuster.ai Brand Logo */}
           <div
-            className="flex items-center gap-1.5 cursor-pointer shrink-0 select-none"
+            className="flex items-center cursor-pointer shrink-0 select-none py-1"
             onClick={() => onSelectTab('crm')}
           >
-            <span className="text-xl font-extrabold tracking-tight text-[#0f172a]">salesbuster</span>
-            <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-[#e6fffa] text-[#00a79d] border border-[#99f6e4]/60">
-              .ai
-            </span>
+            <img
+              src="/logo.png"
+              alt="salesbuster.ai"
+              className="h-8 md:h-9 w-auto object-contain hover:opacity-90 transition-opacity"
+            />
           </div>
 
           {/* Navigation Links: ONLY the 5 before tabs */}
