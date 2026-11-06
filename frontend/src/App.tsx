@@ -361,30 +361,75 @@ export const App: React.FC = () => {
     showToast(`Contact "${contactData.name}" added to CRM!`);
   };
 
-  // CSV Import
+  // CSV Import with header auto-detection, phone normalization, and persistent saving
   const handleImportCsv = (csvContent: string) => {
-    const lines = csvContent.trim().split('\n');
-    let importedCount = 0;
-    const newEntries: Contact[] = [];
-
-    for (let i = 1; i < lines.length; i++) {
-      const parts = lines[i].split(',');
-      if (parts.length >= 2) {
-        newEntries.push({
-          id: `c-${Date.now()}-${i}`,
-          name: parts[0].trim(),
-          phoneNumber: parts[1].trim(),
-          tag: parts[2]?.trim() || 'CSV Import',
-          optInConsent: true,
-          isSuppressed: false,
-          createdAt: new Date().toISOString().split('T')[0],
-        });
-        importedCount++;
-      }
+    const lines = csvContent.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    if (lines.length === 0) {
+      showToast('No valid rows found in CSV.');
+      return;
     }
 
-    setContacts((prev) => [...newEntries, ...prev]);
-    showToast(`Successfully imported ${importedCount} contacts!`);
+    const headerParts = lines[0].split(',').map((h) => h.trim().toLowerCase().replace(/['"]/g, ''));
+    let nameIdx = headerParts.findIndex((h) => h.includes('name'));
+    let phoneIdx = headerParts.findIndex(
+      (h) => h.includes('phone') || h.includes('mobile') || h.includes('contact') || h.includes('num'),
+    );
+    let tagIdx = headerParts.findIndex(
+      (h) => h.includes('tag') || h.includes('group') || h.includes('category') || h.includes('label'),
+    );
+
+    let startIndex = 1;
+    if (nameIdx === -1 && phoneIdx === -1) {
+      nameIdx = 0;
+      phoneIdx = 1;
+      tagIdx = 2;
+      startIndex = 0;
+    } else {
+      if (nameIdx === -1) nameIdx = 0;
+      if (phoneIdx === -1) phoneIdx = 1;
+      if (tagIdx === -1) tagIdx = 2;
+    }
+
+    const newEntries: Contact[] = [];
+    for (let i = startIndex; i < lines.length; i++) {
+      const parts = lines[i].split(',').map((p) => p.trim().replace(/^["']|["']$/g, ''));
+      if (parts.length < 2) continue;
+
+      const rawName = parts[nameIdx] || parts[0] || 'Customer';
+      const rawPhone = parts[phoneIdx] || parts[1] || '';
+      const rawTag = parts[tagIdx] || parts[2] || 'CSV Import';
+
+      const digits = rawPhone.replace(/[^\d+]/g, '');
+      if (digits.replace(/[^\d]/g, '').length < 7) continue;
+
+      let normalizedPhone = digits;
+      if (!digits.startsWith('+')) {
+        const clean = digits.replace(/[^\d]/g, '');
+        if (clean.length === 10) normalizedPhone = `+91${clean}`;
+        else if (clean.length === 12 && clean.startsWith('91')) normalizedPhone = `+${clean}`;
+        else normalizedPhone = `+${clean}`;
+      }
+
+      newEntries.push({
+        id: `c-${Date.now()}-${i}`,
+        name: rawName,
+        phoneNumber: normalizedPhone,
+        tag: rawTag,
+        optInConsent: true,
+        isSuppressed: false,
+        createdAt: new Date().toLocaleDateString('en-IN'),
+      });
+    }
+
+    if (newEntries.length === 0) {
+      showToast('No valid contacts with phone numbers found.');
+      return;
+    }
+
+    const updated = [...newEntries, ...contacts];
+    setContacts(updated);
+    saveToStorage('wa_saas_contacts_v2', updated);
+    showToast(`Successfully imported & saved ${newEntries.length} contacts!`);
   };
 
   // Provision virtual number

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { Contact } from '../types';
 import {
   Users,
@@ -13,6 +13,12 @@ import {
   Sparkles,
   Phone,
   Tag,
+  UploadCloud,
+  Download,
+  Upload,
+  X,
+  FileText,
+  Check,
 } from 'lucide-react';
 
 interface ContactsViewProps {
@@ -47,11 +53,93 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
   const [newTag, setNewTag] = useState('New Inquiries');
   const [newConsent, setNewConsent] = useState(true);
 
-  // CSV import text
+  // CSV import state
+  const [csvImportTab, setCsvImportTab] = useState<'FILE' | 'PASTE'>('FILE');
+  const [selectedCsvFile, setSelectedCsvFile] = useState<{ name: string; size: number } | null>(null);
+  const csvFileInputRef = useRef<HTMLInputElement>(null);
   const [csvText, setCsvText] = useState(
     `name,phone,tag\nRahul Mehta,+919811122233,Diwali Leads\nSneha Sen,+919822233344,Online Store`,
   );
   const [csvOptInAccepted, setCsvOptInAccepted] = useState(true);
+
+  // File selection reader
+  const handleCsvFileSelect = (file: File) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = (e.target?.result as string) || '';
+      setCsvText(content);
+      setSelectedCsvFile({ name: file.name, size: file.size });
+    };
+    reader.readAsText(file);
+  };
+
+  // Sample CSV generator for 1-click download
+  const handleDownloadSampleCsv = () => {
+    const sampleCsv = `Name,Phone,Tag\nVijay Kumar,+919876543210,VIP Customer\nAnanya Sen,+918899001122,Festive Lead\nRahul Sharma,9123456789,Inquiries\nPriya Patel,+91 99887 76655,Wholesale\nKiran Reddy,9876501234,Support`;
+    const blob = new Blob([sampleCsv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'whatsapp_contacts_template.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Live parsed preview
+  const parsedPreview = useMemo(() => {
+    const lines = csvText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    if (lines.length === 0) return { total: 0, previewRows: [] };
+
+    const headerParts = lines[0].split(',').map((h) => h.trim().toLowerCase().replace(/['"]/g, ''));
+    let nameIdx = headerParts.findIndex((h) => h.includes('name'));
+    let phoneIdx = headerParts.findIndex(
+      (h) => h.includes('phone') || h.includes('mobile') || h.includes('contact') || h.includes('num'),
+    );
+    let tagIdx = headerParts.findIndex(
+      (h) => h.includes('tag') || h.includes('group') || h.includes('category') || h.includes('label'),
+    );
+
+    let startIndex = 1;
+    if (nameIdx === -1 && phoneIdx === -1) {
+      nameIdx = 0;
+      phoneIdx = 1;
+      tagIdx = 2;
+      startIndex = 0;
+    } else {
+      if (nameIdx === -1) nameIdx = 0;
+      if (phoneIdx === -1) phoneIdx = 1;
+      if (tagIdx === -1) tagIdx = 2;
+    }
+
+    const rows: Array<{ name: string; phone: string; tag: string }> = [];
+    for (let i = startIndex; i < lines.length; i++) {
+      const parts = lines[i].split(',').map((p) => p.trim().replace(/^["']|["']$/g, ''));
+      if (parts.length >= 2) {
+        const rawPhone = parts[phoneIdx] || parts[1] || '';
+        const digits = rawPhone.replace(/[^\d+]/g, '');
+        if (digits.replace(/[^\d]/g, '').length >= 7) {
+          let normalized = digits;
+          if (!digits.startsWith('+')) {
+            const clean = digits.replace(/[^\d]/g, '');
+            if (clean.length === 10) normalized = `+91${clean}`;
+            else if (clean.length === 12 && clean.startsWith('91')) normalized = `+${clean}`;
+            else normalized = `+${clean}`;
+          }
+          rows.push({
+            name: parts[nameIdx] || parts[0] || 'Customer',
+            phone: normalized,
+            tag: parts[tagIdx] || parts[2] || 'CSV Import',
+          });
+        }
+      }
+    }
+    return {
+      total: rows.length,
+      previewRows: rows.slice(0, 4),
+    };
+  }, [csvText]);
 
   const filteredContacts = contacts.filter(
     (c) =>
@@ -313,24 +401,180 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
 
       {/* CSV Import Modal */}
       {showCsvModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4">
-            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
-              Bulk CSV Import
-            </h3>
-            <p className="text-xs text-slate-500">
-              Paste comma-separated data or upload your customer list with columns: `name,phone,tag`.
-            </p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-xl w-full p-6 space-y-4 border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700">
+                  <FileSpreadsheet className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Import Contacts via CSV
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Upload an Excel/CSV spreadsheet or paste contacts directly.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCsvModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-            <textarea
-              rows={6}
-              value={csvText}
-              onChange={(e) => setCsvText(e.target.value)}
-              className="w-full font-mono text-xs p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#128C7E] focus:outline-none"
-            />
+            {/* Template Download & Column Guide */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs">
+              <div>
+                <span className="font-semibold text-slate-700">Supported Columns: </span>
+                <code className="text-[#128C7E] bg-emerald-50 px-1.5 py-0.5 rounded font-mono font-bold">
+                  Name, Phone, Tag
+                </code>
+                <div className="text-[11px] text-slate-400 mt-0.5">
+                  10-digit Indian numbers are automatically prefixed with +91
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleDownloadSampleCsv}
+                className="px-2.5 py-1.5 bg-white border border-slate-300 hover:border-emerald-500 hover:text-emerald-700 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-2xs shrink-0 ml-2"
+                title="Download sample template file"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-600" />
+                Sample Template
+              </button>
+            </div>
 
-            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg flex items-start gap-2">
+            {/* Mode Switcher */}
+            <div className="flex border-b border-slate-200 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setCsvImportTab('FILE')}
+                className={`pb-2.5 px-3 border-b-2 transition flex items-center gap-1.5 ${
+                  csvImportTab === 'FILE'
+                    ? 'border-[#128C7E] text-[#128C7E]'
+                    : 'border-transparent text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <UploadCloud className="w-4 h-4" />
+                Upload CSV File
+              </button>
+              <button
+                type="button"
+                onClick={() => setCsvImportTab('PASTE')}
+                className={`pb-2.5 px-3 border-b-2 transition flex items-center gap-1.5 ${
+                  csvImportTab === 'PASTE'
+                    ? 'border-[#128C7E] text-[#128C7E]'
+                    : 'border-transparent text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <FileText className="w-4 h-4" />
+                Paste Text / Spreadsheet Rows
+              </button>
+            </div>
+
+            {/* Tab 1: Upload File */}
+            {csvImportTab === 'FILE' && (
+              <div className="space-y-3">
+                <input
+                  type="file"
+                  ref={csvFileInputRef}
+                  accept=".csv,text/csv,text/plain"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleCsvFileSelect(f);
+                  }}
+                  className="hidden"
+                />
+
+                <div
+                  onClick={() => csvFileInputRef.current?.click()}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const f = e.dataTransfer.files?.[0];
+                    if (f) handleCsvFileSelect(f);
+                  }}
+                  className="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-2xl p-6 text-center cursor-pointer transition bg-slate-50/50 hover:bg-emerald-50/20 group"
+                >
+                  <UploadCloud className="w-10 h-10 text-slate-400 group-hover:text-emerald-600 mx-auto mb-2 transition" />
+                  <div className="text-sm font-bold text-slate-700 group-hover:text-emerald-800">
+                    {selectedCsvFile ? selectedCsvFile.name : 'Click to choose .CSV file or drag & drop here'}
+                  </div>
+                  <div className="text-xs text-slate-400 mt-1">
+                    {selectedCsvFile
+                      ? `${(selectedCsvFile.size / 1024).toFixed(1)} KB • Click to change file`
+                      : 'Accepts standard .csv exports from Excel, Google Sheets, or CRMs'}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Tab 2: Paste Raw CSV */}
+            {csvImportTab === 'PASTE' && (
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-slate-600">
+                  Paste CSV Lines:
+                </label>
+                <textarea
+                  rows={5}
+                  value={csvText}
+                  onChange={(e) => {
+                    setCsvText(e.target.value);
+                    setSelectedCsvFile(null);
+                  }}
+                  placeholder="Name,Phone,Tag&#10;Vijay Kumar,+919876543210,VIP Customer&#10;Ananya Sen,9812345678,Lead"
+                  className="w-full font-mono text-xs p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#128C7E] focus:outline-none"
+                />
+              </div>
+            )}
+
+            {/* Live Data Preview */}
+            {parsedPreview.total > 0 && (
+              <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-2 text-xs">
+                <div className="flex items-center justify-between font-bold text-emerald-950">
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    {parsedPreview.total} Contacts Ready to Import
+                  </span>
+                  <span className="text-[11px] text-emerald-700 font-normal">
+                    Previewing top {parsedPreview.previewRows.length} rows
+                  </span>
+                </div>
+
+                <div className="bg-white rounded-lg border border-emerald-200/80 overflow-hidden text-[11px]">
+                  <table className="w-full text-left">
+                    <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+                      <tr>
+                        <th className="px-3 py-1.5">Name</th>
+                        <th className="px-3 py-1.5">Phone Number</th>
+                        <th className="px-3 py-1.5">Tag</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-mono">
+                      {parsedPreview.previewRows.map((r, i) => (
+                        <tr key={i}>
+                          <td className="px-3 py-1 text-slate-800 font-sans font-medium">{r.name}</td>
+                          <td className="px-3 py-1 text-[#075E54]">{r.phone}</td>
+                          <td className="px-3 py-1 text-slate-500 font-sans">
+                            <span className="bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">
+                              {r.tag}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Compliance opt-in */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-start gap-2.5">
               <input
                 type="checkbox"
                 id="csvConsent"
@@ -338,26 +582,27 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
                 onChange={(e) => setCsvOptInAccepted(e.target.checked)}
                 className="mt-0.5 w-4 h-4 text-emerald-600 rounded"
               />
-              <label htmlFor="csvConsent" className="text-xs text-emerald-900 leading-tight">
+              <label htmlFor="csvConsent" className="text-xs text-slate-700 leading-tight cursor-pointer">
                 I certify that all recipients in this CSV file have provided affirmative opt-in consent in compliance with WhatsApp Business Messaging Policies.
               </label>
             </div>
 
-            <div className="flex justify-end space-x-2 pt-2">
+            {/* Action Buttons */}
+            <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setShowCsvModal(false)}
-                className="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-slate-50"
+                className="px-4 py-2 border border-slate-300 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-100 transition"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleImportCsv}
-                disabled={!csvOptInAccepted}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
+                disabled={!csvOptInAccepted || parsedPreview.total === 0}
+                className="px-5 py-2 bg-[#25D366] hover:bg-[#1da851] text-white rounded-xl text-sm font-bold shadow-md shadow-emerald-600/20 disabled:opacity-50 transition active:scale-95"
               >
-                Start Streaming Import
+                Import {parsedPreview.total > 0 ? `${parsedPreview.total} Contacts` : 'Contacts'}
               </button>
             </div>
           </div>
