@@ -48,15 +48,6 @@ export interface MessageTemplate {
   supportsSpintax?: boolean;
 }
 
-export interface AutoResponderRule {
-  id: string;
-  keyword: string;
-  matchType: 'EXACT' | 'CONTAINS';
-  replyText: string;
-  isActive: boolean;
-  triggerCount: number;
-}
-
 export interface Campaign {
   id: string;
   name: string;

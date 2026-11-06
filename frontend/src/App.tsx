@@ -13,17 +13,15 @@ import {
   initialMessages,
   initialWallet,
   initialContacts,
-  initialAutoResponders,
   initialWarmupLogs,
 } from './store';
-import { Contact, VirtualNumber, Campaign, MessageLog, WalletData, MessageTemplate, AutoResponderRule, WarmupLogEntry } from './types';
+import { Contact, VirtualNumber, Campaign, MessageLog, WalletData, MessageTemplate, WarmupLogEntry } from './types';
 import { Navbar } from './components/Navbar';
 import { ContactsView } from './components/ContactsView';
 import { WhatsAppModal } from './components/WhatsAppModal';
 import { DeliveryReportsView } from './components/DeliveryReportsView';
 import { VirtualNumbersView } from './components/VirtualNumbersView';
 import { WalletView } from './components/WalletView';
-import { AutoResponderView } from './components/AutoResponderView';
 import { MessageSquare, CheckCircle2, Send } from 'lucide-react';
 
 export const getCleanPhoneKey = (phone: string): string => {
@@ -46,7 +44,7 @@ export const deduplicateContacts = (list: Contact[]): Contact[] => {
 };
 
 export const App: React.FC = () => {
-  const [currentTab, setCurrentTab] = useState<'crm' | 'campaigns' | 'reports' | 'numbers' | 'autoresponder' | 'wallet'>('crm');
+  const [currentTab, setCurrentTab] = useState<'crm' | 'campaigns' | 'reports' | 'numbers' | 'wallet'>('crm');
 
   // Dynamic application state (v2 - Clean live storage, zero mock data, auto de-duplicated)
   const [contacts, setContacts] = useState<Contact[]>(() => {
@@ -68,9 +66,6 @@ export const App: React.FC = () => {
   );
   const [messages, setMessages] = useState<MessageLog[]>(() =>
     loadFromStorage('wa_saas_messages_v2', initialMessages),
-  );
-  const [autoResponders, setAutoResponders] = useState<AutoResponderRule[]>(() =>
-    loadFromStorage('wa_saas_autoresp_v2', initialAutoResponders),
   );
   const [wallet, setWallet] = useState<WalletData>(() =>
     loadFromStorage('wa_saas_wallet_v2', initialWallet),
@@ -113,10 +108,6 @@ export const App: React.FC = () => {
   useEffect(() => {
     saveToStorage('wa_saas_wallet_v2', wallet);
   }, [wallet]);
-
-  useEffect(() => {
-    saveToStorage('wa_saas_autoresp_v2', autoResponders);
-  }, [autoResponders]);
 
   useEffect(() => {
     saveToStorage('wa_saas_warmup_logs_v2', warmupLogs);
@@ -617,28 +608,6 @@ export const App: React.FC = () => {
     }
   };
 
-  // Auto-responder rules
-  const handleToggleRule = (id: string) => {
-    setAutoResponders((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, isActive: !r.isActive } : r)),
-    );
-  };
-
-  const handleAddRule = (rule: Omit<AutoResponderRule, 'id' | 'triggerCount'>) => {
-    const newRule: AutoResponderRule = {
-      id: `ar-${Date.now()}`,
-      ...rule,
-      triggerCount: 0,
-    };
-    setAutoResponders((prev) => [newRule, ...prev]);
-    showToast(`Auto-reply rule for keyword "${rule.keyword}" activated!`);
-  };
-
-  const handleDeleteRule = (id: string) => {
-    setAutoResponders((prev) => prev.filter((r) => r.id !== id));
-    showToast('Auto-reply rule removed.');
-  };
-
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans antialiased text-slate-900">
       {/* Toast Notification */}
@@ -769,15 +738,6 @@ export const App: React.FC = () => {
             warmupLogs={warmupLogs}
             onTriggerWarmup={handleTriggerWarmup}
             walletBalanceINR={wallet.availableINR}
-          />
-        )}
-
-        {currentTab === 'autoresponder' && (
-          <AutoResponderView
-            rules={autoResponders}
-            onToggleRule={handleToggleRule}
-            onAddRule={handleAddRule}
-            onDeleteRule={handleDeleteRule}
           />
         )}
 

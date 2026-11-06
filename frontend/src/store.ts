@@ -40,33 +40,6 @@ export const initialTemplates: MessageTemplate[] = [
   },
 ];
 
-export const initialAutoResponders = [
-  {
-    id: 'ar-1',
-    keyword: 'PRICE',
-    matchType: 'CONTAINS' as const,
-    replyText: 'Hello! Our Virtual WhatsApp SaaS plans start from ₹499/mo including Indian virtual numbers. Reply with DEMO to start!',
-    isActive: true,
-    triggerCount: 0,
-  },
-  {
-    id: 'ar-2',
-    keyword: 'OFFER',
-    matchType: 'EXACT' as const,
-    replyText: 'Festive offer active! Use code FESTIVE25 for 25% extra credits on your next wallet recharge.',
-    isActive: true,
-    triggerCount: 0,
-  },
-  {
-    id: 'ar-3',
-    keyword: 'STOP',
-    matchType: 'EXACT' as const,
-    replyText: 'You have been successfully unsubscribed. You will not receive any further automated messages.',
-    isActive: true,
-    triggerCount: 0,
-  },
-];
-
 export const initialCampaigns: Campaign[] = [];
 
 export const initialMessages: MessageLog[] = [];
