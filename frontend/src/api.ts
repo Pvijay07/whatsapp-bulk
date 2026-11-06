@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Contact, VirtualNumber, WhatsAppAccount, MessageTemplate, Campaign, MessageLog, WalletData, WarmupLogEntry } from './types';
+import { Contact, VirtualNumber, WhatsAppAccount, ConnectedWhatsAppAccount, MessageTemplate, Campaign, MessageLog, WalletData, WarmupLogEntry } from './types';
 import {
   initialContacts,
   initialNumbers,
@@ -427,6 +427,75 @@ export class DynamicStoreManager {
         success: false,
         error: errorMsg,
       };
+    }
+  }
+
+  // Fetch all linked WhatsApp account slots (Multi-Device)
+  async getWhatsAppAccounts(): Promise<ConnectedWhatsAppAccount[]> {
+    try {
+      const res = await apiClient.get('/session/accounts');
+      return res.data || [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // Create a new WhatsApp account slot (e.g. Account 2, Account 3)
+  async createWhatsAppAccount(label?: string): Promise<ConnectedWhatsAppAccount | null> {
+    try {
+      const res = await apiClient.post('/session/accounts', { label });
+      return res.data;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Generate QR for specific WhatsApp account slot
+  async generateAccountQr(sessionId: string): Promise<{ success: boolean; qrCodeDataUrl?: string; error?: string }> {
+    try {
+      const res = await apiClient.post(`/session/accounts/${sessionId}/qr`);
+      return res.data;
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err.response?.data?.message || err.message || 'Failed to generate QR code',
+      };
+    }
+  }
+
+  // Request 8-digit pairing code for specific WhatsApp account slot
+  async requestAccountPairingCode(
+    sessionId: string,
+    phoneNumber: string,
+  ): Promise<{ success: boolean; pairingCode?: string; error?: string }> {
+    try {
+      const res = await apiClient.post(`/session/accounts/${sessionId}/pairing-code`, { phoneNumber });
+      return res.data;
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err.response?.data?.message || err.message || 'Failed to request pairing code',
+      };
+    }
+  }
+
+  // Logout/unlink specific WhatsApp account
+  async logoutAccount(sessionId: string): Promise<boolean> {
+    try {
+      const res = await apiClient.post(`/session/accounts/${sessionId}/logout`);
+      return res.data?.success;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Delete WhatsApp account slot
+  async deleteAccount(sessionId: string): Promise<boolean> {
+    try {
+      const res = await apiClient.delete(`/session/accounts/${sessionId}`);
+      return res.data?.success;
+    } catch (e) {
+      return false;
     }
   }
 

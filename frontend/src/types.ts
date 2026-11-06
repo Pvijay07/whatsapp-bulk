@@ -37,6 +37,18 @@ export interface WhatsAppAccount {
   status: 'CONNECTED' | 'PENDING';
 }
 
+export interface ConnectedWhatsAppAccount {
+  sessionId: string;
+  label: string;
+  state: 'DISCONNECTED' | 'SCAN_QR_REQUIRED' | 'CONNECTING' | 'ONLINE';
+  isOnline: boolean;
+  isConnecting: boolean;
+  isRegistered: boolean;
+  connectedNumber: string | null;
+  qrCodeDataUrl: string | null;
+  createdAt?: string;
+}
+
 export interface MessageTemplate {
   id: string;
   name: string;

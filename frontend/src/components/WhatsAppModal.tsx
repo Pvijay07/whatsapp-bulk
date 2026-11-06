@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { Contact, VirtualNumber, MessageTemplate, WhatsAppAccount } from '../types';
+import { Contact, VirtualNumber, MessageTemplate, WhatsAppAccount, ConnectedWhatsAppAccount } from '../types';
 import {
   Send,
   CheckCircle2,
@@ -95,38 +95,37 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
     connectedNumber: null,
   });
 
+  const [connectedAccounts, setConnectedAccounts] = useState<ConnectedWhatsAppAccount[]>([]);
+
   useEffect(() => {
-    const fetchStatus = async () => {
+    const fetchAccounts = async () => {
       try {
-        const res = await axios.get('/api/v1/session/status');
-        if (res.data) {
-          setSessionStatus(res.data);
-          if (res.data.isOnline && res.data.connectedNumber) {
-            setSelectedNumberId('real-linked-session');
+        const res = await axios.get('/api/v1/session/accounts');
+        if (Array.isArray(res.data)) {
+          setConnectedAccounts(res.data);
+          const onlineAcc = res.data.find((a: any) => a.isOnline) || res.data[0];
+          if (onlineAcc) {
+            setSessionStatus(onlineAcc);
           }
         }
       } catch (e) {}
     };
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 3000);
+    fetchAccounts();
+    const interval = setInterval(fetchAccounts, 3000);
     return () => clearInterval(interval);
   }, []);
 
   const [targetType, setTargetType] = useState<'SINGLE' | 'ALL'>(selectedContact ? 'SINGLE' : 'ALL');
-  const [selectedNumberId, setSelectedNumberId] = useState(
-    virtualNumbers.find((n) => n.id === 'real-linked-session')?.id || virtualNumbers[0]?.id || 'real-linked-session',
-  );
+  const [selectedNumberId, setSelectedNumberId] = useState('MULTI_NUMBER_POOL');
 
   useEffect(() => {
-    const active = virtualNumbers.find((n) => n.id === 'real-linked-session');
-    if (active) {
-      setSelectedNumberId(active.id);
-    } else if (sessionStatus.isOnline || sessionStatus.connectedNumber) {
-      setSelectedNumberId('real-linked-session');
-    } else if (virtualNumbers.length > 0 && !selectedNumberId) {
-      setSelectedNumberId(virtualNumbers[0].id);
+    if (connectedAccounts.length > 0 && selectedNumberId === 'MULTI_NUMBER_POOL') {
+      const firstOnline = connectedAccounts.find((a) => a.isOnline);
+      if (firstOnline && dispatchType === 'DEDICATED_NUMBER') {
+        setSelectedNumberId(firstOnline.sessionId);
+      }
     }
-  }, [virtualNumbers, sessionStatus.isOnline, sessionStatus.connectedNumber]);
+  }, [connectedAccounts, dispatchType]);
 
   const [campaignName, setCampaignName] = useState(
     selectedContact
@@ -262,16 +261,17 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
 
     setIsSending(true);
     setTimeout(() => {
+      const selectedAcc = connectedAccounts.find((a) => a.sessionId === selectedNumberId);
+      const onlineCount = connectedAccounts.filter((a) => a.isOnline).length || 1;
+
       onSendCampaign({
         campaignName,
         dispatchType,
         senderNumber:
           dispatchType === 'MULTI_NUMBER_POOL'
-            ? `Virtual Pool (${virtualNumbers.length} Numbers)`
-            : sessionStatus.isOnline && sessionStatus.connectedNumber
-            ? sessionStatus.connectedNumber
-            : selectedNumber?.phoneNumber || 'Linked WhatsApp Account',
-        senderPoolCount: dispatchType === 'MULTI_NUMBER_POOL' ? virtualNumbers.length : 1,
+            ? 'MULTI_NUMBER_POOL'
+            : selectedAcc?.connectedNumber || selectedAcc?.sessionId || 'default',
+        senderPoolCount: dispatchType === 'MULTI_NUMBER_POOL' ? onlineCount : 1,
         customMessageText: messageText,
         buttons: buttonsEnabled ? campaignButtons : [],
         media: attachment,
@@ -435,10 +435,10 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
                 >
                   <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
                     <Repeat className="w-4 h-4 text-[#128C7E]" />
-                    Multi-Number Pool
+                    Multi-Number Pool (Recommended)
                   </div>
                   <div className="text-[11px] text-slate-500 mt-1 leading-snug">
-                    Rotates messages evenly across all {virtualNumbers.length} virtual numbers.
+                    Rotates messages evenly across all {connectedAccounts.filter((a) => a.isOnline).length || 1} online WhatsApp numbers.
                   </div>
                 </button>
 
@@ -518,28 +518,21 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
             {dispatchType === 'DEDICATED_NUMBER' ? (
               <div>
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                  Choose Virtual Sender Number (+91)
+                  Choose WhatsApp Sender Channel (+91)
                 </label>
                 <select
                   value={selectedNumberId}
                   onChange={(e) => setSelectedNumberId(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-[#128C7E] focus:outline-none"
                 >
-                  {(sessionStatus.connectedNumber || virtualNumbers.some((n) => n.id === 'real-linked-session')) && (
-                    <option value="real-linked-session">
-                      🟢 {sessionStatus.connectedNumber || virtualNumbers.find((n) => n.id === 'real-linked-session')?.phoneNumber} • Connected  ()
+                  {connectedAccounts.map((acc, idx) => (
+                    <option key={acc.sessionId} value={acc.sessionId}>
+                      {acc.isOnline ? '🟢' : '🟡'} #{idx + 1}: {acc.label} {acc.connectedNumber ? `(+${acc.connectedNumber})` : '(Unpaired Slot)'}
                     </option>
-                  )}
-                  {virtualNumbers
-                    .filter((n) => n.id !== 'real-linked-session')
-                    .map((num) => (
-                      <option key={num.id} value={num.id}>
-                        {num.phoneNumber} • {num.provider} ({num.region})
-                      </option>
-                    ))}
-                  {!sessionStatus.connectedNumber && !virtualNumbers.some((n) => n.id === 'real-linked-session') && virtualNumbers.length === 0 && (
+                  ))}
+                  {connectedAccounts.length === 0 && (
                     <option value="" disabled>
-                      ⚠️ No active WhatsApp sender linked yet
+                      ⚠️ No active WhatsApp accounts configured yet
                     </option>
                   )}
                 </select>
@@ -549,12 +542,12 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
                 <div className="flex items-center justify-between font-bold text-slate-800">
                   <span className="flex items-center gap-1.5 text-emerald-700">
                     <Repeat className="w-3.5 h-3.5" />
-                    Active Pool: {virtualNumbers.length} Virtual Numbers
+                    Multi-Number Pool: {connectedAccounts.filter((a) => a.isOnline).length || 1} Online Channels
                   </span>
-                  <span className="text-slate-500 font-normal">Round-Robin Active</span>
+                  <span className="text-slate-500 font-normal">Auto Round-Robin Active</span>
                 </div>
                 <div className="text-slate-500 text-[11px]">
-                  {virtualNumbers.map((n) => n.phoneNumber).join(' • ')}
+                  {connectedAccounts.filter((a) => a.isOnline).map((n) => `+${n.connectedNumber}`).join(' • ') || 'All online accounts will rotate evenly.'}
                 </div>
               </div>
             )}

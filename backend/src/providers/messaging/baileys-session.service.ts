@@ -4,8 +4,6 @@ import makeWASocket, {
   useMultiFileAuthState,
   WASocket,
   Browsers,
-  proto,
-  generateWAMessageFromContent,
 } from '@whiskeysockets/baileys';
 import * as QRCode from 'qrcode';
 import * as path from 'path';
@@ -13,15 +11,35 @@ import * as fs from 'fs';
 
 export type SessionConnectionState = 'DISCONNECTED' | 'SCAN_QR_REQUIRED' | 'CONNECTING' | 'ONLINE';
 
+export interface WhatsAppAccountInfo {
+  sessionId: string;
+  label: string;
+  state: SessionConnectionState;
+  isOnline: boolean;
+  isConnecting: boolean;
+  isRegistered: boolean;
+  connectedNumber: string | null;
+  qrCodeDataUrl: string | null;
+  createdAt: string;
+}
+
+interface SessionData {
+  sessionId: string;
+  label: string;
+  sock: WASocket | null;
+  sessionState: SessionConnectionState;
+  currentQrCodeDataUrl: string | null;
+  connectedPhoneNumber: string | null;
+  reconnectTimeout: NodeJS.Timeout | null;
+  isInitializing: boolean;
+  createdAt: string;
+}
+
 @Injectable()
 export class BaileysSessionService implements OnModuleInit {
   private readonly logger = new Logger(BaileysSessionService.name);
-  private sock: WASocket | null = null;
-  private sessionState: SessionConnectionState = 'DISCONNECTED';
-  private currentQrCodeDataUrl: string | null = null;
-  private connectedPhoneNumber: string | null = null;
-  private reconnectTimeout: NodeJS.Timeout | null = null;
-  private isInitializing = false;
+  private sessions: Map<string, SessionData> = new Map();
+  private roundRobinIndex = 0;
   private messageStatuses = new Map<
     string,
     {
@@ -36,23 +54,52 @@ export class BaileysSessionService implements OnModuleInit {
     return this.messageStatuses;
   }
 
-  private getSessionDir(): string {
-    const fixedPath = 'd:\\vijay\\whatsapp-bulk\\backend\\sessions\\active_device';
-    if (fs.existsSync('d:\\vijay\\whatsapp-bulk\\backend')) {
+  private getSessionsBaseDir(): string {
+    const fixedPath = 'd:\\vijay\\whatsapp-bulk\\backend\\sessions';
+    if (fs.existsSync(fixedPath)) {
       return fixedPath;
     }
     const baseDir = fs.existsSync(path.resolve(process.cwd(), 'backend'))
       ? path.resolve(process.cwd(), 'backend')
       : process.cwd();
-    return path.resolve(baseDir, 'sessions', 'active_device');
+    const resolved = path.resolve(baseDir, 'sessions');
+    if (!fs.existsSync(resolved)) {
+      fs.mkdirSync(resolved, { recursive: true });
+    }
+    return resolved;
   }
 
-  /**
-   * Reads saved credentials to recover registered phone number even during reconnects or after restart
-   */
-  private getSavedRegisteredNumber(): string | null {
+  private getSessionDir(sessionId: string): string {
+    const base = this.getSessionsBaseDir();
+    if (sessionId === 'default') {
+      return path.join(base, 'active_device');
+    }
+    return path.join(base, sessionId);
+  }
+
+  private getAccountsMetaFilePath(): string {
+    return path.join(this.getSessionsBaseDir(), 'accounts_meta.json');
+  }
+
+  private loadAccountsMeta(): Record<string, { label: string; createdAt: string }> {
     try {
-      const credsPath = path.join(this.getSessionDir(), 'creds.json');
+      const file = this.getAccountsMetaFilePath();
+      if (fs.existsSync(file)) {
+        return JSON.parse(fs.readFileSync(file, 'utf8'));
+      }
+    } catch (e) {}
+    return {};
+  }
+
+  private saveAccountsMeta(data: Record<string, { label: string; createdAt: string }>) {
+    try {
+      fs.writeFileSync(this.getAccountsMetaFilePath(), JSON.stringify(data, null, 2), 'utf8');
+    } catch (e) {}
+  }
+
+  private getSavedRegisteredNumber(sessionId: string): string | null {
+    try {
+      const credsPath = path.join(this.getSessionDir(sessionId), 'creds.json');
       if (fs.existsSync(credsPath)) {
         const raw = fs.readFileSync(credsPath, 'utf8');
         const data = JSON.parse(raw);
@@ -65,9 +112,9 @@ export class BaileysSessionService implements OnModuleInit {
     return null;
   }
 
-  private isSessionRegistered(): boolean {
+  private isSessionRegistered(sessionId: string): boolean {
     try {
-      const credsPath = path.join(this.getSessionDir(), 'creds.json');
+      const credsPath = path.join(this.getSessionDir(sessionId), 'creds.json');
       if (fs.existsSync(credsPath)) {
         const raw = fs.readFileSync(credsPath, 'utf8');
         const data = JSON.parse(raw);
@@ -78,79 +125,131 @@ export class BaileysSessionService implements OnModuleInit {
   }
 
   async onModuleInit() {
-    // Restore connected number from disk if available
-    const saved = this.getSavedRegisteredNumber();
-    if (saved) {
-      this.connectedPhoneNumber = saved;
-      this.logger.log(`Found existing registered WhatsApp session for number: ${saved}`);
+    const baseDir = this.getSessionsBaseDir();
+    const meta = this.loadAccountsMeta();
+
+    // 1. Ensure default session (active_device) is registered
+    const defaultDir = this.getSessionDir('default');
+    if (!fs.existsSync(defaultDir)) {
+      fs.mkdirSync(defaultDir, { recursive: true });
     }
 
-    this.initSocket().catch((err) => {
-      this.logger.warn(`Deferred Baileys socket initialization: ${err.message}`);
-    });
+    const defaultSaved = this.getSavedRegisteredNumber('default');
+    const defaultSession: SessionData = {
+      sessionId: 'default',
+      label: meta['default']?.label || 'Primary WhatsApp Channel (SIM 1)',
+      sock: null,
+      sessionState: defaultSaved ? 'CONNECTING' : 'SCAN_QR_REQUIRED',
+      currentQrCodeDataUrl: null,
+      connectedPhoneNumber: defaultSaved,
+      reconnectTimeout: null,
+      isInitializing: false,
+      createdAt: meta['default']?.createdAt || new Date().toISOString(),
+    };
+    this.sessions.set('default', defaultSession);
+
+    // 2. Discover any additional accounts in backend/sessions/
+    try {
+      const entries = fs.readdirSync(baseDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory() && entry.name !== 'active_device' && !entry.name.startsWith('.')) {
+          const sid = entry.name;
+          const savedNum = this.getSavedRegisteredNumber(sid);
+          const sessionObj: SessionData = {
+            sessionId: sid,
+            label: meta[sid]?.label || `WhatsApp Channel (${sid.slice(-4)})`,
+            sock: null,
+            sessionState: savedNum ? 'CONNECTING' : 'SCAN_QR_REQUIRED',
+            currentQrCodeDataUrl: null,
+            connectedPhoneNumber: savedNum,
+            reconnectTimeout: null,
+            isInitializing: false,
+            createdAt: meta[sid]?.createdAt || new Date().toISOString(),
+          };
+          this.sessions.set(sid, sessionObj);
+        }
+      }
+    } catch (e) {
+      this.logger.warn(`Session discovery warning: ${(e as any).message}`);
+    }
+
+    this.logger.log(`📱 Discovered ${this.sessions.size} WhatsApp account slots. Initializing connections...`);
+
+    // 3. Initialize sockets for all registered accounts
+    for (const [sid] of this.sessions.entries()) {
+      this.initSocket(sid).catch((err) => {
+        this.logger.warn(`Deferred socket initialization for ${sid}: ${err.message}`);
+      });
+    }
   }
 
   /**
-   * Cleanly closes and removes all listeners from any previous socket instance
-   * to prevent duplicate connections (which cause status 440 connectionReplaced).
+   * Cleans up socket instance for a given session.
    */
-  private cleanUpSocket() {
-    if (this.sock) {
+  private cleanUpSocket(session: SessionData) {
+    if (session.sock) {
       try {
-        this.sock.ev.removeAllListeners('connection.update');
-        this.sock.ev.removeAllListeners('creds.update');
-        this.sock.ws?.close();
-        this.sock.end(undefined);
+        session.sock.ev.removeAllListeners('connection.update');
+        session.sock.ev.removeAllListeners('creds.update');
+        session.sock.ev.removeAllListeners('messages.update');
+        session.sock.ws?.close();
+        session.sock.end(undefined);
       } catch (e) {}
-      this.sock = null;
+      session.sock = null;
     }
   }
 
   /**
-   * Schedules a single, debounced reconnect attempt.
+   * Schedules reconnect for a given session.
    */
-  private scheduleReconnect(delayMs: number) {
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
-      this.reconnectTimeout = null;
+  private scheduleReconnect(session: SessionData, delayMs: number) {
+    if (session.reconnectTimeout) {
+      clearTimeout(session.reconnectTimeout);
+      session.reconnectTimeout = null;
     }
-    this.reconnectTimeout = setTimeout(() => {
-      this.reconnectTimeout = null;
-      this.initSocket().catch((err) => {
-        this.logger.error(`Error in scheduled socket reconnect: ${err.message}`);
+    session.reconnectTimeout = setTimeout(() => {
+      session.reconnectTimeout = null;
+      this.initSocket(session.sessionId).catch((err) => {
+        this.logger.error(`Error in scheduled socket reconnect for ${session.sessionId}: ${err.message}`);
       });
     }, delayMs);
   }
 
-  async initSocket() {
-    if (this.isInitializing) {
-      this.logger.debug('Socket initialization already in progress, skipping duplicate call');
+  /**
+   * Initializes a Baileys WebSocket connection for a given session slot.
+   */
+  async initSocket(sessionId: string) {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`Session ${sessionId} not found.`);
+    }
+
+    if (session.isInitializing) {
+      this.logger.debug(`Socket init already in progress for ${sessionId}, skipping duplicate call.`);
       return;
     }
 
-    this.isInitializing = true;
-    this.cleanUpSocket();
+    session.isInitializing = true;
+    this.cleanUpSocket(session);
 
-    const sessionDir = this.getSessionDir();
+    const sessionDir = this.getSessionDir(sessionId);
     if (!fs.existsSync(sessionDir)) {
       fs.mkdirSync(sessionDir, { recursive: true });
     }
 
     try {
       const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+      session.sessionState = 'CONNECTING';
 
-      this.sessionState = 'CONNECTING';
-
-      // Ensure we keep existing registered phone number in memory
-      const savedNum = this.getSavedRegisteredNumber();
-      if (savedNum && !this.connectedPhoneNumber) {
-        this.connectedPhoneNumber = savedNum;
+      const savedNum = this.getSavedRegisteredNumber(sessionId);
+      if (savedNum && !session.connectedPhoneNumber) {
+        session.connectedPhoneNumber = savedNum;
       }
 
-      this.sock = makeWASocket({
+      session.sock = makeWASocket({
         auth: state,
         printQRInTerminal: false,
-        browser: Browsers.ubuntu('Chrome'),
+        browser: Browsers.ubuntu(`Chrome-${sessionId}`),
         syncFullHistory: false,
         markOnlineOnConnect: true,
         connectTimeoutMs: 60000,
@@ -158,95 +257,84 @@ export class BaileysSessionService implements OnModuleInit {
         keepAliveIntervalMs: 25000,
         retryRequestDelayMs: 2000,
         maxMsgRetryCount: 5,
-        getMessage: async () => {
-          return {
-            conversation: 'SalesBuster keepalive',
-          };
-        },
+        getMessage: async () => ({ conversation: 'SalesBuster keepalive' }),
       });
 
-      this.sock.ev.on('connection.update', async (update) => {
+      session.sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
-          // Only show QR if device is not already registered
-          if (!this.isSessionRegistered()) {
-            this.sessionState = 'SCAN_QR_REQUIRED';
+          if (!this.isSessionRegistered(sessionId)) {
+            session.sessionState = 'SCAN_QR_REQUIRED';
             try {
               const qrLib: any = QRCode?.toDataURL ? QRCode : (QRCode as any)?.default || require('qrcode');
-              this.currentQrCodeDataUrl = await qrLib.toDataURL(qr, {
+              session.currentQrCodeDataUrl = await qrLib.toDataURL(qr, {
                 margin: 2,
                 scale: 6,
                 color: { dark: '#075E54', light: '#FFFFFF' },
               });
-              this.logger.log('New WhatsApp pairing QR code generated. Ready to scan on phone!');
+              this.logger.log(`New QR code generated for ${session.label} (${sessionId}). Ready to scan.`);
             } catch (e: any) {
-              this.logger.error(`Failed to generate QR code data URL: ${e.message}`);
+              this.logger.error(`Failed to generate QR data URL for ${sessionId}: ${e.message}`);
             }
           }
         }
 
         if (connection === 'open') {
-          this.sessionState = 'ONLINE';
-          this.currentQrCodeDataUrl = null;
+          session.sessionState = 'ONLINE';
+          session.currentQrCodeDataUrl = null;
           const detected =
-            this.sock?.user?.id?.split(':')[0]?.replace(/[^\d]/g, '') ||
-            this.getSavedRegisteredNumber() ||
+            session.sock?.user?.id?.split(':')[0]?.replace(/[^\d]/g, '') ||
+            this.getSavedRegisteredNumber(sessionId) ||
             'Linked Device';
-          this.connectedPhoneNumber = detected;
-          this.logger.log(`🟢 WhatsApp Multi-Device session is LIVE & ONLINE! Number: ${this.connectedPhoneNumber}`);
+          session.connectedPhoneNumber = detected;
+          this.logger.log(`🟢 WhatsApp [${session.label}] (${sessionId}) is LIVE & ONLINE! Number: ${detected}`);
         }
 
         if (connection === 'close') {
           const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
           const isLoggedOut = statusCode === DisconnectReason.loggedOut;
-          this.logger.warn(`WhatsApp session closed (status: ${statusCode}). Logged out: ${isLoggedOut}`);
+          this.logger.warn(`WhatsApp session [${sessionId}] closed (status: ${statusCode}). Logged out: ${isLoggedOut}`);
 
           if (isLoggedOut) {
-            // User explicitly logged out from mobile app
-            this.sessionState = 'DISCONNECTED';
-            this.connectedPhoneNumber = null;
-            this.currentQrCodeDataUrl = null;
-            this.cleanUpSocket();
+            session.sessionState = 'DISCONNECTED';
+            session.connectedPhoneNumber = null;
+            session.currentQrCodeDataUrl = null;
+            this.cleanUpSocket(session);
             if (fs.existsSync(sessionDir)) {
               fs.rmSync(sessionDir, { recursive: true, force: true });
             }
-            this.scheduleReconnect(1500);
+            this.scheduleReconnect(session, 1500);
           } else if (statusCode === DisconnectReason.connectionReplaced) {
-            // Another connection opened with same creds. Delay to prevent thrashing loop.
-            this.logger.warn(`Session connection was replaced by another instance. Delaying reconnect to stabilize.`);
-            this.sessionState = 'CONNECTING';
-            this.cleanUpSocket();
-            this.scheduleReconnect(5000);
+            this.logger.warn(`Session connection replaced for ${sessionId}. Delaying reconnect.`);
+            session.sessionState = 'CONNECTING';
+            this.cleanUpSocket(session);
+            this.scheduleReconnect(session, 5000);
           } else {
-            // Normal transient drop (e.g. 515 restartRequired right after pairing, or 428 connectionClosed)
-            // DO NOT wipe credentials or connectedPhoneNumber!
-            this.sessionState = 'CONNECTING';
-            this.cleanUpSocket();
+            session.sessionState = 'CONNECTING';
+            this.cleanUpSocket(session);
             const reconnectDelay = statusCode === DisconnectReason.restartRequired ? 500 : 2500;
-            this.logger.log(`Reconnecting WhatsApp session in ${reconnectDelay}ms (Handset preserved: ${this.connectedPhoneNumber})...`);
-            this.scheduleReconnect(reconnectDelay);
+            this.logger.log(`Reconnecting WhatsApp [${sessionId}] in ${reconnectDelay}ms...`);
+            this.scheduleReconnect(session, reconnectDelay);
           }
         }
       });
 
-      this.sock.ev.on('creds.update', async () => {
+      session.sock.ev.on('creds.update', async () => {
         await saveCreds();
-        // Update connected phone number as soon as creds contain registration
-        const saved = this.getSavedRegisteredNumber();
-        if (saved && !this.connectedPhoneNumber) {
-          this.connectedPhoneNumber = saved;
-          this.logger.log(`WhatsApp credentials updated with phone number: ${saved}`);
+        const saved = this.getSavedRegisteredNumber(sessionId);
+        if (saved && !session.connectedPhoneNumber) {
+          session.connectedPhoneNumber = saved;
+          this.logger.log(`WhatsApp credentials updated for ${sessionId} with number: ${saved}`);
         }
       });
 
-      // Track live WhatsApp delivery receipts and read statuses
-      this.sock.ev.on('messages.update', (updates) => {
+      // Global live delivery receipt tracker across all active sockets
+      session.sock.ev.on('messages.update', (updates) => {
         for (const update of updates) {
           const msgId = update.key?.id;
           if (!msgId) continue;
           const statusVal = update.update?.status;
-          // WAMessageStatus: ERROR: 0, PENDING: 1, SERVER_ACK: 2, DELIVERY_ACK: 3, READ: 4, PLAYED: 5
           let newStatus: 'SENT' | 'DELIVERED' | 'READ' | 'FAILED' | null = null;
           if (statusVal === 3) {
             newStatus = 'DELIVERED';
@@ -265,40 +353,204 @@ export class BaileysSessionService implements OnModuleInit {
               timestamp: Date.now(),
               recipientJid: update.key?.remoteJid || existing?.recipientJid,
             });
-            this.logger.log(`Live WhatsApp Receipt update: [${msgId}] -> ${newStatus}`);
+            this.logger.log(`Receipt update: [${msgId}] -> ${newStatus}`);
           }
         }
       });
     } catch (err: any) {
-      this.logger.error(`Error initializing Baileys socket: ${err.message}`);
-      this.sessionState = 'DISCONNECTED';
+      this.logger.error(`Error initializing Baileys socket for ${sessionId}: ${err.message}`);
+      session.sessionState = 'DISCONNECTED';
     } finally {
-      this.isInitializing = false;
+      session.isInitializing = false;
     }
   }
 
-  getSessionStatus() {
-    const isOnline = this.sessionState === 'ONLINE' && !!this.sock?.user;
-    const isConnecting = this.sessionState === 'CONNECTING';
-    const isRegistered = this.isSessionRegistered();
-    const registeredNumber = this.connectedPhoneNumber || this.getSavedRegisteredNumber();
+  /**
+   * Returns list of all configured WhatsApp accounts and their connection statuses.
+   */
+  listAccounts(): WhatsAppAccountInfo[] {
+    const list: WhatsAppAccountInfo[] = [];
+    for (const s of this.sessions.values()) {
+      const isOnline = s.sessionState === 'ONLINE' && !!s.sock?.user;
+      const isConnecting = s.sessionState === 'CONNECTING';
+      const isRegistered = this.isSessionRegistered(s.sessionId);
+      const registeredNumber = s.connectedPhoneNumber || this.getSavedRegisteredNumber(s.sessionId);
+
+      list.push({
+        sessionId: s.sessionId,
+        label: s.label,
+        state: s.sessionState,
+        isOnline,
+        isConnecting,
+        isRegistered,
+        connectedNumber: registeredNumber,
+        qrCodeDataUrl: isOnline || isRegistered ? null : s.currentQrCodeDataUrl,
+        createdAt: s.createdAt,
+      });
+    }
+    return list;
+  }
+
+  /**
+   * Creates a new WhatsApp account slot (e.g. Account 2, Account 3) and initializes its pairing process.
+   */
+  async createAccount(label?: string): Promise<WhatsAppAccountInfo> {
+    const count = this.sessions.size + 1;
+    const sessionId = `wa_account_${Date.now()}`;
+    const accountLabel = label?.trim() || `WhatsApp Channel #${count}`;
+
+    const newSession: SessionData = {
+      sessionId,
+      label: accountLabel,
+      sock: null,
+      sessionState: 'SCAN_QR_REQUIRED',
+      currentQrCodeDataUrl: null,
+      connectedPhoneNumber: null,
+      reconnectTimeout: null,
+      isInitializing: false,
+      createdAt: new Date().toISOString(),
+    };
+
+    this.sessions.set(sessionId, newSession);
+
+    // Persist meta
+    const meta = this.loadAccountsMeta();
+    meta[sessionId] = { label: accountLabel, createdAt: newSession.createdAt };
+    this.saveAccountsMeta(meta);
+
+    this.logger.log(`Created new WhatsApp account slot: "${accountLabel}" (${sessionId})`);
+
+    // Initialize socket in background
+    this.initSocket(sessionId).catch((e) => {
+      this.logger.warn(`Error initializing fresh account ${sessionId}: ${e.message}`);
+    });
 
     return {
-      state: this.sessionState,
+      sessionId,
+      label: accountLabel,
+      state: 'SCAN_QR_REQUIRED',
+      isOnline: false,
+      isConnecting: true,
+      isRegistered: false,
+      connectedNumber: null,
+      qrCodeDataUrl: null,
+      createdAt: newSession.createdAt,
+    };
+  }
+
+  /**
+   * Deletes a WhatsApp account slot and removes its session credentials from disk.
+   */
+  async deleteAccount(sessionId: string): Promise<{ success: boolean; message: string }> {
+    if (sessionId === 'default') {
+      // For default session, don't delete slot, simply logout
+      await this.logout('default');
+      return { success: true, message: 'Primary channel reset and unlinked.' };
+    }
+
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return { success: false, message: 'Account not found.' };
+    }
+
+    this.cleanUpSocket(session);
+    const sessionDir = this.getSessionDir(sessionId);
+    if (fs.existsSync(sessionDir)) {
+      fs.rmSync(sessionDir, { recursive: true, force: true });
+    }
+
+    this.sessions.delete(sessionId);
+
+    const meta = this.loadAccountsMeta();
+    delete meta[sessionId];
+    this.saveAccountsMeta(meta);
+
+    this.logger.log(`Deleted WhatsApp account slot ${sessionId}`);
+    return { success: true, message: `Account ${session.label} removed.` };
+  }
+
+  /**
+   * Gets session status for a specific session or the primary/first active session.
+   */
+  getSessionStatus(sessionId = 'default') {
+    let session = this.sessions.get(sessionId);
+    if (!session) {
+      session = this.sessions.get('default') || Array.from(this.sessions.values())[0];
+    }
+
+    if (!session) {
+      return {
+        state: 'DISCONNECTED' as SessionConnectionState,
+        isOnline: false,
+        isConnecting: false,
+        isRegistered: false,
+        qrCodeDataUrl: null,
+        connectedNumber: null,
+      };
+    }
+
+    const isOnline = session.sessionState === 'ONLINE' && !!session.sock?.user;
+    const isConnecting = session.sessionState === 'CONNECTING';
+    const isRegistered = this.isSessionRegistered(session.sessionId);
+    const registeredNumber = session.connectedPhoneNumber || this.getSavedRegisteredNumber(session.sessionId);
+
+    return {
+      sessionId: session.sessionId,
+      label: session.label,
+      state: session.sessionState,
       isOnline,
       isConnecting,
       isRegistered,
-      qrCodeDataUrl: isOnline || isRegistered ? null : this.currentQrCodeDataUrl,
+      qrCodeDataUrl: isOnline || isRegistered ? null : session.currentQrCodeDataUrl,
       connectedNumber: registeredNumber,
     };
   }
 
   /**
-   * Transmits an ACTUAL,  message directly over the live WebSocket protocol
+   * Returns all currently connected and online WhatsApp sessions.
    */
+  getOnlineSessions(): SessionData[] {
+    return Array.from(this.sessions.values()).filter(
+      (s) => s.sessionState === 'ONLINE' && s.sock && !!s.sock.user,
+    );
+  }
+
   /**
-   * Transmits a real WhatsApp message over the live Baileys WebSocket protocol.
-   * Supports rich text, Click-to-Chat deep link buttons, and media attachments (images, PDFs, documents, video, audio).
+   * Resolves the session to use for sending: specific session or round-robin rotation.
+   */
+  private getNextOnlineSession(preferredSessionId?: string): SessionData | null {
+    if (preferredSessionId && preferredSessionId !== 'AUTO' && preferredSessionId !== 'MULTI_NUMBER_POOL') {
+      const direct = this.sessions.get(preferredSessionId);
+      if (direct && direct.sessionState === 'ONLINE' && direct.sock) {
+        return direct;
+      }
+      // Match by phone number
+      const cleanPreferred = preferredSessionId.replace(/[^\d]/g, '');
+      for (const s of this.sessions.values()) {
+        const sNum = (s.connectedPhoneNumber || '').replace(/[^\d]/g, '');
+        if (sNum && (sNum === cleanPreferred || sNum.endsWith(cleanPreferred) || cleanPreferred.endsWith(sNum))) {
+          if (s.sessionState === 'ONLINE' && s.sock) {
+            return s;
+          }
+        }
+      }
+    }
+
+    const onlineList = this.getOnlineSessions();
+    if (onlineList.length === 0) {
+      // Fallback to any session with sock
+      const fallback = Array.from(this.sessions.values()).find((s) => s.sock && s.sessionState === 'ONLINE');
+      return fallback || null;
+    }
+
+    const selected = onlineList[this.roundRobinIndex % onlineList.length];
+    this.roundRobinIndex++;
+    return selected;
+  }
+
+  /**
+   * Transmits an authentic message directly over the live WebSocket protocol.
+   * Supports multi-number pool round-robin rotation or dedicated number dispatching.
    */
   async sendRealMessage(
     toPhoneNumber: string,
@@ -311,37 +563,29 @@ export class BaileysSessionService implements OnModuleInit {
       fileName: string;
       fileSize?: number;
     },
-  ): Promise<{ success: boolean; messageId: string; error?: string }> {
-    // If briefly reconnecting, wait up to 4 seconds for online state
-    if (this.sessionState !== 'ONLINE') {
-      const waitStart = Date.now();
-      while (Date.now() - waitStart < 4000) {
-        if ((this.sessionState as any) === 'ONLINE' && this.sock) {
-          break;
-        }
-        await new Promise((r) => setTimeout(r, 300));
-      }
-    }
-
-    if (this.sessionState !== 'ONLINE' || !this.sock) {
+    preferredSessionId?: string,
+  ): Promise<{ success: boolean; messageId: string; dispatchedVia?: string; error?: string }> {
+    const session = this.getNextOnlineSession(preferredSessionId);
+    if (!session || !session.sock) {
       return {
         success: false,
         messageId: '',
-        error: `Device not linked to WhatsApp. Current status: ${this.sessionState}. Scan QR code in Virtual Numbers to link.`,
+        error: `No online WhatsApp account available. Link at least one WhatsApp number in Virtual Numbers.`,
       };
     }
 
+    const sock = session.sock;
+
     try {
-      // Format 10 or 12 digit phone number to JID format: e.g. 919876543210@s.whatsapp.net
       let clean = toPhoneNumber.replace(/[^\d]/g, '');
       if (clean.length === 10) {
         clean = `91${clean}`;
       }
       const jid = `${clean}@s.whatsapp.net`;
 
-      // 1. Pre-flight verification: Check if recipient actually exists on WhatsApp
+      // 1. Pre-flight verification: Check if recipient exists on WhatsApp
       try {
-        const checkResults = await this.sock.onWhatsApp(clean);
+        const checkResults = await sock.onWhatsApp(clean);
         const exists = checkResults && checkResults.length > 0 && !!checkResults[0]?.exists;
         if (!exists) {
           const errMsg = `Recipient number +${clean} is not registered on WhatsApp.`;
@@ -356,12 +600,12 @@ export class BaileysSessionService implements OnModuleInit {
         this.logger.warn(`WhatsApp onWhatsApp check warning: ${checkErr.message}`);
       }
 
-      // Format Action Buttons into authentic WhatsApp Click-to-Chat Deep Links (wa.me) & Rich Cards
+      // Format Action Buttons into authentic WhatsApp Click-to-Chat Deep Links (wa.me)
       let finalText = text || '';
       if (buttons && buttons.length > 0) {
         const senderClean = (
-          this.connectedPhoneNumber ||
-          this.getSavedRegisteredNumber() ||
+          session.connectedPhoneNumber ||
+          this.getSavedRegisteredNumber(session.sessionId) ||
           '918897727709'
         ).replace(/[^\d]/g, '');
 
@@ -375,7 +619,6 @@ export class BaileysSessionService implements OnModuleInit {
             if (!phone.startsWith('+') && phone.length === 10) phone = `+91${phone}`;
             return `📞 *${b.text}*\n   📲 ${phone}`;
           } else {
-            // Quick reply using wa.me deep link with pre-typed text
             const replyText = b.text.replace(/^[^\w\s]+/g, '').trim() || b.text;
             const encoded = encodeURIComponent(replyText);
             const deepLink = `https://wa.me/${senderClean}?text=${encoded}`;
@@ -401,32 +644,31 @@ export class BaileysSessionService implements OnModuleInit {
         const fileName = media.fileName || 'attachment';
 
         if (mime.startsWith('image/')) {
-          this.logger.log(`Transmitting real WhatsApp image broadcast (${fileName}) to ${jid}...`);
-          sent = await this.sock.sendMessage(jid, {
+          this.logger.log(`Transmitting WhatsApp image via [${session.label}] to ${jid}...`);
+          sent = await sock.sendMessage(jid, {
             image: mediaSource,
             caption: finalText || undefined,
           });
         } else if (mime.startsWith('video/')) {
-          this.logger.log(`Transmitting real WhatsApp video broadcast (${fileName}) to ${jid}...`);
-          sent = await this.sock.sendMessage(jid, {
+          this.logger.log(`Transmitting WhatsApp video via [${session.label}] to ${jid}...`);
+          sent = await sock.sendMessage(jid, {
             video: mediaSource,
             caption: finalText || undefined,
             mimetype: mime,
           });
         } else if (mime.startsWith('audio/')) {
-          this.logger.log(`Transmitting real WhatsApp audio broadcast (${fileName}) to ${jid}...`);
-          sent = await this.sock.sendMessage(jid, {
+          this.logger.log(`Transmitting WhatsApp audio via [${session.label}] to ${jid}...`);
+          sent = await sock.sendMessage(jid, {
             audio: mediaSource,
             mimetype: mime,
             ptt: false,
           });
           if (finalText && finalText.trim()) {
-            await this.sock.sendMessage(jid, { text: finalText });
+            await sock.sendMessage(jid, { text: finalText });
           }
         } else {
-          // Document / PDF / Sheets / Text / Any file
-          this.logger.log(`Transmitting real WhatsApp document broadcast (${fileName}, ${mime}) to ${jid}...`);
-          sent = await this.sock.sendMessage(jid, {
+          this.logger.log(`Transmitting WhatsApp document via [${session.label}] to ${jid}...`);
+          sent = await sock.sendMessage(jid, {
             document: mediaSource,
             mimetype: mime,
             fileName: fileName,
@@ -434,12 +676,12 @@ export class BaileysSessionService implements OnModuleInit {
           });
         }
       } else {
-        this.logger.log(`Transmitting real WhatsApp broadcast to ${jid} over WebSocket...`);
-        sent = await this.sock.sendMessage(jid, { text: finalText });
+        this.logger.log(`Transmitting WhatsApp text via [${session.label}] to ${jid}...`);
+        sent = await sock.sendMessage(jid, { text: finalText });
       }
 
       const realMsgId = sent?.key?.id || `VMSG-${clean}-${Date.now().toString(36)}`;
-      this.logger.log(`✅ Message delivered to WhatsApp servers! Key ID: ${realMsgId}`);
+      this.logger.log(`✅ Message dispatched via [${session.label}]! Key ID: ${realMsgId}`);
 
       this.messageStatuses.set(realMsgId, {
         status: 'SENT',
@@ -450,6 +692,7 @@ export class BaileysSessionService implements OnModuleInit {
       return {
         success: true,
         messageId: realMsgId,
+        dispatchedVia: session.connectedPhoneNumber || session.label,
       };
     } catch (err: any) {
       this.logger.error(`Failed to deliver real WhatsApp message: ${err.message}`, err.stack);
@@ -462,16 +705,17 @@ export class BaileysSessionService implements OnModuleInit {
   }
 
   /**
-   * Directly checks whether a given phone number is registered on WhatsApp.
+   * Pre-flight verification of a phone number on WhatsApp.
    */
-  async checkNumberOnWhatsApp(phoneNumber: string): Promise<{ exists: boolean; jid?: string }> {
-    if (this.sessionState !== 'ONLINE' || !this.sock) {
+  async checkNumberOnWhatsApp(phoneNumber: string, sessionId?: string): Promise<{ exists: boolean; jid?: string }> {
+    const session = this.getNextOnlineSession(sessionId);
+    if (!session || !session.sock) {
       return { exists: false };
     }
     try {
       let clean = phoneNumber.replace(/[^\d]/g, '');
       if (clean.length === 10) clean = `91${clean}`;
-      const results = await this.sock.onWhatsApp(clean);
+      const results = await session.sock.onWhatsApp(clean);
       const matched = results && results.length > 0 && results[0]?.exists ? results[0] : null;
       return {
         exists: !!matched,
@@ -484,46 +728,53 @@ export class BaileysSessionService implements OnModuleInit {
   }
 
   /**
-   * Resets uncompleted session and triggers a fresh, authentic WhatsApp QR code.
-   * If session is already linked, rejects to prevent accidental key destruction.
+   * Resets and regenerates a fresh pairing QR code for a specific session.
    */
-  async generateFreshQr(): Promise<{ success: boolean; qrCodeDataUrl: string | null; error?: string }> {
-    if (this.sessionState === 'ONLINE' || this.isSessionRegistered()) {
-      const num = this.connectedPhoneNumber || this.getSavedRegisteredNumber() || '';
+  async generateFreshQr(sessionId = 'default'): Promise<{ success: boolean; qrCodeDataUrl: string | null; error?: string }> {
+    let session = this.sessions.get(sessionId);
+    if (!session) {
+      await this.createAccount();
+      session = this.sessions.get(sessionId);
+    }
+    if (!session) {
+      return { success: false, qrCodeDataUrl: null, error: `Session ${sessionId} not found.` };
+    }
+
+    if (session.sessionState === 'ONLINE' || this.isSessionRegistered(sessionId)) {
+      const num = session.connectedPhoneNumber || this.getSavedRegisteredNumber(sessionId) || '';
       return {
         success: false,
         qrCodeDataUrl: null,
-        error: `Device (${num}) is already linked. Click Logout in Virtual Numbers tab first if you want to unlink.`,
+        error: `Account (${num}) is already linked. Click Logout first if you want to unlink.`,
       };
     }
 
     try {
-      this.logger.log('Generating fresh  QR code...');
-      this.cleanUpSocket();
+      this.logger.log(`Generating fresh QR code for ${session.label} (${sessionId})...`);
+      this.cleanUpSocket(session);
 
-      const sessionDir = this.getSessionDir();
+      const sessionDir = this.getSessionDir(sessionId);
       if (fs.existsSync(sessionDir)) {
         fs.rmSync(sessionDir, { recursive: true, force: true });
       }
 
-      this.currentQrCodeDataUrl = null;
-      this.sessionState = 'CONNECTING';
+      session.currentQrCodeDataUrl = null;
+      session.sessionState = 'CONNECTING';
 
-      await this.initSocket();
+      await this.initSocket(sessionId);
 
-      // Poll until QR is emitted (up to 12s)
       const start = Date.now();
       while (Date.now() - start < 12000) {
-        if (this.currentQrCodeDataUrl) {
-          return { success: true, qrCodeDataUrl: this.currentQrCodeDataUrl };
+        if (session.currentQrCodeDataUrl) {
+          return { success: true, qrCodeDataUrl: session.currentQrCodeDataUrl };
         }
         await new Promise((r) => setTimeout(r, 400));
       }
 
       return {
-        success: !!this.currentQrCodeDataUrl,
-        qrCodeDataUrl: this.currentQrCodeDataUrl,
-        error: this.currentQrCodeDataUrl ? undefined : 'Timed out waiting for WhatsApp QR code',
+        success: !!session.currentQrCodeDataUrl,
+        qrCodeDataUrl: session.currentQrCodeDataUrl,
+        error: session.currentQrCodeDataUrl ? undefined : 'Timed out waiting for WhatsApp QR code',
       };
     } catch (err: any) {
       return { success: false, qrCodeDataUrl: null, error: err.message };
@@ -531,10 +782,9 @@ export class BaileysSessionService implements OnModuleInit {
   }
 
   /**
-   * Request an 8-character Pairing Code for an existing WhatsApp number without QR camera scanning.
-   * User enters this code in WhatsApp -> Linked Devices -> "Link with phone number instead".
+   * Request an 8-character Pairing Code for an existing WhatsApp number without QR scanning.
    */
-  async requestPairingCode(phoneNumber: string): Promise<string> {
+  async requestPairingCode(phoneNumber: string, sessionId = 'default'): Promise<string> {
     let clean = phoneNumber.replace(/[^\d]/g, '');
     if (clean.startsWith('0')) {
       clean = clean.substring(1);
@@ -543,46 +793,46 @@ export class BaileysSessionService implements OnModuleInit {
       clean = `91${clean}`;
     }
 
-    if (this.sessionState === 'ONLINE' && this.connectedPhoneNumber) {
-      throw new Error(`Device (${this.connectedPhoneNumber}) is already linked and online. Unlink first.`);
+    let session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`Session ${sessionId} not found.`);
+    }
+
+    if (session.sessionState === 'ONLINE' && session.connectedPhoneNumber) {
+      throw new Error(`Account (${session.connectedPhoneNumber}) is already linked and online. Unlink first.`);
     }
 
     try {
-      this.logger.log(`Preparing clean pairing handshake for number: ${clean}...`);
+      this.logger.log(`Preparing clean pairing handshake for ${clean} on ${session.label}...`);
+      this.cleanUpSocket(session);
 
-      // 1. Reset uncompleted session state to avoid stale creds conflict
-      this.cleanUpSocket();
-
-      const sessionDir = this.getSessionDir();
+      const sessionDir = this.getSessionDir(sessionId);
       if (fs.existsSync(sessionDir)) {
         fs.rmSync(sessionDir, { recursive: true, force: true });
       }
 
-      this.connectedPhoneNumber = null;
-      this.currentQrCodeDataUrl = null;
+      session.connectedPhoneNumber = null;
+      session.currentQrCodeDataUrl = null;
 
-      // 2. Initialize fresh socket
-      await this.initSocket();
+      await this.initSocket(sessionId);
 
-      // 3. Wait until WebSocket is open and ready to accept IQ stanzas (max 12s)
       const startTime = Date.now();
       while (Date.now() - startTime < 12000) {
-        if (this.sock && (this.sock.ws as any)?.isOpen) {
+        if (session.sock && (session.sock.ws as any)?.isOpen) {
           break;
         }
         await new Promise((r) => setTimeout(r, 300));
       }
 
-      if (!this.sock || !(this.sock.ws as any)?.isOpen) {
+      if (!session.sock || !(session.sock.ws as any)?.isOpen) {
         throw new Error('Connection timed out waiting for WhatsApp servers. Please retry.');
       }
 
-      // Ensure initial hello handshake completes
       await new Promise((r) => setTimeout(r, 1200));
 
       this.logger.log(`Requesting 8-digit WhatsApp pairing code for ${clean}...`);
-      const code = await this.sock.requestPairingCode(clean);
-      this.logger.log(`WhatsApp pairing code successfully generated for ${clean}: ${code}`);
+      const code = await session.sock.requestPairingCode(clean);
+      this.logger.log(`WhatsApp pairing code generated for ${clean}: ${code}`);
       return code;
     } catch (err: any) {
       this.logger.error(`Failed to request pairing code for ${clean}: ${err.message}`);
@@ -590,17 +840,25 @@ export class BaileysSessionService implements OnModuleInit {
     }
   }
 
-  async logout() {
+  /**
+   * Disconnects / unlinks a session slot.
+   */
+  async logout(sessionId = 'default') {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return { success: false, error: 'Session not found.' };
+    }
+
     try {
-      this.cleanUpSocket();
-      const sessionDir = this.getSessionDir();
+      this.cleanUpSocket(session);
+      const sessionDir = this.getSessionDir(sessionId);
       if (fs.existsSync(sessionDir)) {
         fs.rmSync(sessionDir, { recursive: true, force: true });
       }
-      this.sessionState = 'DISCONNECTED';
-      this.connectedPhoneNumber = null;
-      this.currentQrCodeDataUrl = null;
-      this.scheduleReconnect(1000);
+      session.sessionState = 'DISCONNECTED';
+      session.connectedPhoneNumber = null;
+      session.currentQrCodeDataUrl = null;
+      this.scheduleReconnect(session, 1000);
       return { success: true };
     } catch (e: any) {
       return { success: false, error: e.message };

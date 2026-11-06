@@ -295,11 +295,18 @@ export class CampaignQueueService implements OnModuleInit {
       msg.status = 'SENDING';
 
       // REAL TRANSMISSION via Baileys Multi-Device WebSocket
+      // Multi-Number Pool automatically rotates across all online WhatsApp accounts
+      const preferredSender =
+        campaign.dispatchType === 'MULTI_NUMBER_POOL' || campaign.senderNumber === 'MULTI_NUMBER_POOL'
+          ? 'AUTO'
+          : campaign.senderNumber;
+
       const res = await this.baileysService.sendRealMessage(
         msg.recipientPhoneNumber,
         text,
         campaign.buttons,
         campaign.media,
+        preferredSender,
       );
 
       const now = new Date().toLocaleTimeString('en-IN', {

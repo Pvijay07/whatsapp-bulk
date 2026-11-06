@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Body, HttpCode, HttpStatus, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Param, Body, HttpCode, HttpStatus, BadRequestException } from '@nestjs/common';
 import { BaileysSessionService } from '../../providers/messaging/baileys-session.service';
 import { CampaignQueueService } from './campaign-queue.service';
 
@@ -8,6 +8,82 @@ export class SessionController {
     private readonly baileysService: BaileysSessionService,
     private readonly queueService: CampaignQueueService,
   ) {}
+
+  /**
+   * Retrieves all linked & available WhatsApp account slots (Multi-WhatsApp).
+   */
+  @Get('accounts')
+  getAccounts() {
+    return this.baileysService.listAccounts();
+  }
+
+  /**
+   * Creates a new WhatsApp account slot (e.g. Account 2, Account 3).
+   */
+  @Post('accounts')
+  @HttpCode(HttpStatus.OK)
+  async createAccount(@Body() body: { label?: string }) {
+    return this.baileysService.createAccount(body?.label);
+  }
+
+  /**
+   * Status of a specific WhatsApp account slot.
+   */
+  @Get('accounts/:sessionId/status')
+  getAccountStatus(@Param('sessionId') sessionId: string) {
+    return this.baileysService.getSessionStatus(sessionId);
+  }
+
+  /**
+   * Generates QR code for a specific WhatsApp account slot.
+   */
+  @Post('accounts/:sessionId/qr')
+  @HttpCode(HttpStatus.OK)
+  async generateAccountQr(@Param('sessionId') sessionId: string) {
+    const res = await this.baileysService.generateFreshQr(sessionId);
+    if (!res.success && res.error) {
+      throw new BadRequestException(res.error);
+    }
+    return res;
+  }
+
+  /**
+   * Requests 8-digit pairing code for a specific WhatsApp account slot.
+   */
+  @Post('accounts/:sessionId/pairing-code')
+  @HttpCode(HttpStatus.OK)
+  async getAccountPairingCode(
+    @Param('sessionId') sessionId: string,
+    @Body() body: { phoneNumber: string },
+  ) {
+    if (!body.phoneNumber) {
+      throw new BadRequestException('phoneNumber is required');
+    }
+    try {
+      const pairingCode = await this.baileysService.requestPairingCode(body.phoneNumber, sessionId);
+      return { success: true, pairingCode };
+    } catch (err: any) {
+      throw new BadRequestException(err.message);
+    }
+  }
+
+  /**
+   * Unlinks a specific WhatsApp account slot.
+   */
+  @Post('accounts/:sessionId/logout')
+  @HttpCode(HttpStatus.OK)
+  async logoutAccount(@Param('sessionId') sessionId: string) {
+    return this.baileysService.logout(sessionId);
+  }
+
+  /**
+   * Deletes a WhatsApp account slot and removes credentials.
+   */
+  @Delete('accounts/:sessionId')
+  @HttpCode(HttpStatus.OK)
+  async deleteAccount(@Param('sessionId') sessionId: string) {
+    return this.baileysService.deleteAccount(sessionId);
+  }
 
   @Get('status')
   getStatus() {
