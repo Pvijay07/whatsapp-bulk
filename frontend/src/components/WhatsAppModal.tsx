@@ -141,7 +141,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
   // Interactive Single Quick Reply Action Button (directing to 917997887788)
   const [buttonsEnabled, setButtonsEnabled] = useState(true);
   const [campaignButtons, setCampaignButtons] = useState<CampaignActionButton[]>([
-    { id: 'btn-interactive', type: 'QUICK_REPLY', text: '🎁 Claim 25% Off', value: '917997887788' },
+    { id: 'btn-interactive', type: 'QUICK_REPLY', text: 'WhatsApp Now', value: '917997887788' },
   ]);
 
   // Media Attachment (Images, Documents / PDFs, Videos, Audio)
@@ -293,8 +293,13 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
 
   const senderPreviewNum = (sessionStatus.connectedNumber || '918897727709').replace(/[^\d]/g, '');
 
-  // Message body remains 100% clean without appending button link text.
-  // The interactive button renders purely as an authentic WhatsApp button element below the message.
+  // Format 1-Click Interactive WhatsApp Action (wa.me) matching user reference screenshot
+  if (buttonsEnabled && campaignButtons.length > 0) {
+    const b = campaignButtons[0];
+    const label = b.text || 'WhatsApp Now';
+    const targetClean = (b.value || '917997887788').replace(/[^\d]/g, '') || '917997887788';
+    renderedBody = `${renderedBody}\n\n${label}: https://wa.me/${targetClean}`;
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
@@ -696,7 +701,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
                       type="text"
                       value={campaignButtons[0]?.text || ''}
                       onChange={(e) => handleUpdateInteractiveButton({ text: e.target.value })}
-                      placeholder="e.g. 🎁 Claim 25% Off"
+                      placeholder="e.g. WhatsApp Now"
                       className="w-full px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 bg-white"
                       maxLength={35}
                     />
@@ -899,12 +904,11 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Single Native Action Button Mockup (Pill below message bubble) */}
+                  {/* Single Native Action Button Mockup (Pill below message bubble, matching user reference) */}
                   {buttonsEnabled && campaignButtons.length > 0 && (
-                    <div className="border-t border-slate-100 bg-white">
+                    <div className="border-t border-slate-100 bg-slate-50/80">
                       <div className="py-2.5 px-3 text-center text-xs font-bold text-[#128C7E] flex items-center justify-center gap-1.5 hover:bg-emerald-50/60 transition cursor-pointer select-none">
-                        <CornerDownLeft className="w-3.5 h-3.5 text-[#128C7E]" />
-                        <span className="truncate">{campaignButtons[0]?.text || '🎁 Claim 25% Off'}</span>
+                        <span className="truncate">{campaignButtons[0]?.text || 'WhatsApp Now'}</span>
                       </div>
                     </div>
                   )}

@@ -602,69 +602,21 @@ export class BaileysSessionService implements OnModuleInit {
         this.logger.warn(`WhatsApp onWhatsApp check warning: ${checkErr.message}`);
       }
 
-      // Clean message body text - DO NOT append button links into message content text!
+      // Format 1-Click Interactive WhatsApp Action (wa.me)
+      // Exactly matching the reference layout: "<Label>: https://wa.me/<TargetPhone>"
       let finalText = text || '';
+      if (buttons && buttons.length > 0) {
+        const b = buttons.find((btn) => (btn.type || '').toUpperCase() === 'QUICK_REPLY') || buttons[0];
+        const label = b.text || 'WhatsApp Now';
+        const targetClean = (b.value || '917997887788').replace(/[^\d]/g, '') || '917997887788';
+        const waLink = `https://wa.me/${targetClean}`;
+        const buttonLine = `${label}: ${waLink}`;
+        finalText = finalText ? `${finalText}\n\n${buttonLine}` : buttonLine;
+      }
+
       let sent: any;
 
-      if (buttons && buttons.length > 0 && (!media || (!media.base64 && !media.url))) {
-        // Transmit authentic WhatsApp Interactive Message (Native Flow Button)
-        const b = buttons.find((btn) => (btn.type || '').toUpperCase() === 'QUICK_REPLY') || buttons[0];
-        const buttonText = b.text || '🎁 Claim 25% Off';
-        const targetClean = (b.value || '917997887788').replace(/[^\d]/g, '') || '917997887788';
-        const replyText = buttonText.replace(/^[^\w\s]+/g, '').trim() || buttonText;
-        const encoded = encodeURIComponent(replyText);
-
-        try {
-          this.logger.log(`Transmitting native interactive button via [${session.label}] to ${jid}...`);
-          const interactiveMsg = proto.Message.InteractiveMessage.create({
-            body: proto.Message.InteractiveMessage.Body.create({
-              text: finalText,
-            }),
-            footer: proto.Message.InteractiveMessage.Footer.create({
-              text: 'salesbuster.ai Gateway',
-            }),
-            header: proto.Message.InteractiveMessage.Header.create({
-              title: '',
-              subtitle: '',
-              hasMediaAttachment: false,
-            }),
-            nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
-              buttons: [
-                {
-                  name: 'cta_url',
-                  buttonParamsJson: JSON.stringify({
-                    display_text: buttonText,
-                    url: `https://wa.me/${targetClean}?text=${encoded}`,
-                    merchant_url: `https://wa.me/${targetClean}`,
-                  }),
-                },
-              ],
-            }),
-          });
-
-          const waMsg = generateWAMessageFromContent(
-            jid,
-            {
-              viewOnceMessage: {
-                message: {
-                  messageContextInfo: {
-                    deviceListMetadata: {},
-                    deviceListMetadataVersion: 2,
-                  },
-                  interactiveMessage: interactiveMsg,
-                },
-              },
-            },
-            { userJid: sock.user?.id },
-          );
-
-          await sock.relayMessage(jid, waMsg.message!, { messageId: waMsg.key.id! });
-          sent = waMsg;
-        } catch (relayErr: any) {
-          this.logger.warn(`Interactive button relay failed (${relayErr.message}), falling back to direct message`);
-          sent = await sock.sendMessage(jid, { text: finalText });
-        }
-      } else if (media && (media.base64 || media.url)) {
+      if (media && (media.base64 || media.url)) {
         let mediaBuffer: Buffer | null = null;
         if (media.base64) {
           const cleanB64 = media.base64.replace(/^data:[^;]+;base64,/, '');
