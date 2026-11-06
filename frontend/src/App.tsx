@@ -26,13 +26,37 @@ import { WalletView } from './components/WalletView';
 import { AutoResponderView } from './components/AutoResponderView';
 import { MessageSquare, CheckCircle2, Send } from 'lucide-react';
 
+export const getCleanPhoneKey = (phone: string): string => {
+  let clean = phone.replace(/[^\d]/g, '');
+  if (clean.length === 10) clean = `91${clean}`;
+  return clean;
+};
+
+export const deduplicateContacts = (list: Contact[]): Contact[] => {
+  const seen = new Set<string>();
+  const unique: Contact[] = [];
+  for (const c of list) {
+    const key = getCleanPhoneKey(c.phoneNumber);
+    if (!seen.has(key)) {
+      seen.add(key);
+      unique.push(c);
+    }
+  }
+  return unique;
+};
+
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<'crm' | 'campaigns' | 'reports' | 'numbers' | 'autoresponder' | 'wallet'>('crm');
 
-  // Dynamic application state (v2 - Clean live storage, zero mock data)
-  const [contacts, setContacts] = useState<Contact[]>(() =>
-    loadFromStorage('wa_saas_contacts_v2', initialContacts),
-  );
+  // Dynamic application state (v2 - Clean live storage, zero mock data, auto de-duplicated)
+  const [contacts, setContacts] = useState<Contact[]>(() => {
+    const loaded = loadFromStorage('wa_saas_contacts_v2', initialContacts);
+    const deduped = deduplicateContacts(loaded);
+    if (deduped.length !== loaded.length) {
+      saveToStorage('wa_saas_contacts_v2', deduped);
+    }
+    return deduped;
+  });
   const [virtualNumbers, setVirtualNumbers] = useState<VirtualNumber[]>(() =>
     loadFromStorage('wa_saas_numbers_v3', []),
   );
@@ -354,14 +378,22 @@ export const App: React.FC = () => {
     }
   };
 
-  // Add Contact
+  // Add Contact with de-duplication
   const handleAddContact = async (contactData: Omit<Contact, 'id' | 'createdAt'>) => {
+    const newKey = getCleanPhoneKey(contactData.phoneNumber);
+    const existing = contacts.find((c) => getCleanPhoneKey(c.phoneNumber) === newKey);
+    if (existing) {
+      showToast(`Contact with phone ${contactData.phoneNumber} already exists in CRM (${existing.name})!`);
+      return;
+    }
     const created = await dynamicStore.createContact(contactData);
-    setContacts((prev) => [created, ...prev]);
+    const updated = deduplicateContacts([created, ...contacts]);
+    setContacts(updated);
+    saveToStorage('wa_saas_contacts_v2', updated);
     showToast(`Contact "${contactData.name}" added to CRM!`);
   };
 
-  // CSV Import with header auto-detection, phone normalization, and persistent saving
+  // CSV Import with header auto-detection, phone normalization, strict de-duplication, and persistent saving
   const handleImportCsv = (csvContent: string) => {
     const lines = csvContent.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     if (lines.length === 0) {
@@ -390,7 +422,10 @@ export const App: React.FC = () => {
       if (tagIdx === -1) tagIdx = 2;
     }
 
+    const existingKeys = new Set(contacts.map((c) => getCleanPhoneKey(c.phoneNumber)));
     const newEntries: Contact[] = [];
+    let duplicateCount = 0;
+
     for (let i = startIndex; i < lines.length; i++) {
       const parts = lines[i].split(',').map((p) => p.trim().replace(/^["']|["']$/g, ''));
       if (parts.length < 2) continue;
@@ -410,6 +445,13 @@ export const App: React.FC = () => {
         else normalizedPhone = `+${clean}`;
       }
 
+      const phoneKey = getCleanPhoneKey(normalizedPhone);
+      if (existingKeys.has(phoneKey)) {
+        duplicateCount++;
+        continue; // Skip duplicate
+      }
+
+      existingKeys.add(phoneKey);
       newEntries.push({
         id: `c-${Date.now()}-${i}`,
         name: rawName,
@@ -422,14 +464,23 @@ export const App: React.FC = () => {
     }
 
     if (newEntries.length === 0) {
-      showToast('No valid contacts with phone numbers found.');
+      if (duplicateCount > 0) {
+        showToast(`All ${duplicateCount} contacts in CSV already exist in CRM (duplicates skipped).`);
+      } else {
+        showToast('No valid contacts with phone numbers found.');
+      }
       return;
     }
 
-    const updated = [...newEntries, ...contacts];
+    const updated = deduplicateContacts([...newEntries, ...contacts]);
     setContacts(updated);
     saveToStorage('wa_saas_contacts_v2', updated);
-    showToast(`Successfully imported & saved ${newEntries.length} contacts!`);
+
+    if (duplicateCount > 0) {
+      showToast(`Imported ${newEntries.length} new contacts (${duplicateCount} existing duplicates skipped).`);
+    } else {
+      showToast(`Successfully imported & saved ${newEntries.length} contacts!`);
+    }
   };
 
   // Provision virtual number
@@ -525,19 +576,45 @@ export const App: React.FC = () => {
     showToast(`Wallet credited with ₹${amountINR.toLocaleString('en-IN')}!`);
   };
 
-  // Group Grabber
+  // Group Grabber with strict de-duplication
   const handleGroupGrabberExtract = (extracted: Array<{ name: string; phoneNumber: string; tag: string }>) => {
-    const newEntries: Contact[] = extracted.map((item, idx) => ({
-      id: `c-grab-${Date.now()}-${idx}`,
-      name: item.name,
-      phoneNumber: item.phoneNumber,
-      tag: item.tag,
-      optInConsent: true,
-      isSuppressed: false,
-      createdAt: new Date().toISOString().split('T')[0],
-    }));
-    setContacts((prev) => [...newEntries, ...prev]);
-    showToast(`Group Grabber: Extracted ${extracted.length} WhatsApp numbers to CRM!`);
+    const existingKeys = new Set(contacts.map((c) => getCleanPhoneKey(c.phoneNumber)));
+    const newEntries: Contact[] = [];
+    let duplicateCount = 0;
+
+    for (let i = 0; i < extracted.length; i++) {
+      const item = extracted[i];
+      const phoneKey = getCleanPhoneKey(item.phoneNumber);
+      if (existingKeys.has(phoneKey)) {
+        duplicateCount++;
+        continue;
+      }
+      existingKeys.add(phoneKey);
+      newEntries.push({
+        id: `c-grab-${Date.now()}-${i}`,
+        name: item.name,
+        phoneNumber: item.phoneNumber,
+        tag: item.tag,
+        optInConsent: true,
+        isSuppressed: false,
+        createdAt: new Date().toLocaleDateString('en-IN'),
+      });
+    }
+
+    if (newEntries.length === 0) {
+      showToast(`All ${duplicateCount} extracted contacts already exist in CRM.`);
+      return;
+    }
+
+    const updated = deduplicateContacts([...newEntries, ...contacts]);
+    setContacts(updated);
+    saveToStorage('wa_saas_contacts_v2', updated);
+
+    if (duplicateCount > 0) {
+      showToast(`Extracted ${newEntries.length} new contacts (${duplicateCount} existing duplicates skipped)!`);
+    } else {
+      showToast(`Group Grabber: Extracted ${newEntries.length} WhatsApp numbers to CRM!`);
+    }
   };
 
   // Auto-responder rules
@@ -578,6 +655,7 @@ export const App: React.FC = () => {
         onSelectTab={setCurrentTab}
         walletBalanceINR={wallet.availableINR}
         activeCampaignsCount={campaigns.filter((c) => c.status === 'SENDING').length}
+        contactsCount={contacts.length}
         onOpenQuickCampaign={() => handleOpenWhatsApp(null)}
         isLiveSyncing={isLiveSyncing}
       />

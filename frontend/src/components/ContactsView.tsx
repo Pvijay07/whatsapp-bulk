@@ -87,10 +87,10 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
     document.body.removeChild(link);
   };
 
-  // Live parsed preview
+  // Live parsed preview with de-duplication against existing CRM contacts
   const parsedPreview = useMemo(() => {
     const lines = csvText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    if (lines.length === 0) return { total: 0, previewRows: [] };
+    if (lines.length === 0) return { total: 0, newCount: 0, duplicateCount: 0, previewRows: [] };
 
     const headerParts = lines[0].split(',').map((h) => h.trim().toLowerCase().replace(/['"]/g, ''));
     let nameIdx = headerParts.findIndex((h) => h.includes('name'));
@@ -113,7 +113,19 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
       if (tagIdx === -1) tagIdx = 2;
     }
 
-    const rows: Array<{ name: string; phone: string; tag: string }> = [];
+    const existingKeys = new Set(
+      contacts.map((c) => {
+        let cl = c.phoneNumber.replace(/[^\d]/g, '');
+        if (cl.length === 10) cl = `91${cl}`;
+        return cl;
+      }),
+    );
+    const inCsvKeys = new Set<string>();
+
+    let newCount = 0;
+    let duplicateCount = 0;
+    const rows: Array<{ name: string; phone: string; tag: string; isDuplicate: boolean }> = [];
+
     for (let i = startIndex; i < lines.length; i++) {
       const parts = lines[i].split(',').map((p) => p.trim().replace(/^["']|["']$/g, ''));
       if (parts.length >= 2) {
@@ -127,19 +139,34 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
             else if (clean.length === 12 && clean.startsWith('91')) normalized = `+${clean}`;
             else normalized = `+${clean}`;
           }
+
+          let key = normalized.replace(/[^\d]/g, '');
+          if (key.length === 10) key = `91${key}`;
+
+          const isDup = existingKeys.has(key) || inCsvKeys.has(key);
+          if (isDup) {
+            duplicateCount++;
+          } else {
+            newCount++;
+            inCsvKeys.add(key);
+          }
+
           rows.push({
             name: parts[nameIdx] || parts[0] || 'Customer',
             phone: normalized,
             tag: parts[tagIdx] || parts[2] || 'CSV Import',
+            isDuplicate: isDup,
           });
         }
       }
     }
     return {
       total: rows.length,
-      previewRows: rows.slice(0, 4),
+      newCount,
+      duplicateCount,
+      previewRows: rows.slice(0, 5),
     };
-  }, [csvText]);
+  }, [csvText, contacts]);
 
   const filteredContacts = contacts.filter(
     (c) =>
@@ -535,35 +562,53 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
 
             {/* Live Data Preview */}
             {parsedPreview.total > 0 && (
-              <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-2 text-xs">
-                <div className="flex items-center justify-between font-bold text-emerald-950">
-                  <span className="flex items-center gap-1.5">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs">
+                <div className="flex items-center justify-between font-bold text-slate-800">
+                  <span className="flex items-center gap-1.5 text-emerald-800">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    {parsedPreview.total} Contacts Ready to Import
+                    {parsedPreview.newCount} New Contacts to Import
                   </span>
-                  <span className="text-[11px] text-emerald-700 font-normal">
-                    Previewing top {parsedPreview.previewRows.length} rows
-                  </span>
+                  {parsedPreview.duplicateCount > 0 ? (
+                    <span className="text-[11px] text-amber-800 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full font-semibold">
+                      {parsedPreview.duplicateCount} Existing Duplicates (Auto-Skipped)
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-slate-500 font-normal">
+                      Previewing top {parsedPreview.previewRows.length} rows
+                    </span>
+                  )}
                 </div>
 
-                <div className="bg-white rounded-lg border border-emerald-200/80 overflow-hidden text-[11px]">
+                <div className="bg-white rounded-lg border border-slate-200 overflow-hidden text-[11px]">
                   <table className="w-full text-left">
                     <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
                       <tr>
                         <th className="px-3 py-1.5">Name</th>
                         <th className="px-3 py-1.5">Phone Number</th>
                         <th className="px-3 py-1.5">Tag</th>
+                        <th className="px-3 py-1.5 text-right">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-mono">
                       {parsedPreview.previewRows.map((r, i) => (
-                        <tr key={i}>
+                        <tr key={i} className={r.isDuplicate ? 'bg-amber-50/40 opacity-70' : ''}>
                           <td className="px-3 py-1 text-slate-800 font-sans font-medium">{r.name}</td>
                           <td className="px-3 py-1 text-[#075E54]">{r.phone}</td>
                           <td className="px-3 py-1 text-slate-500 font-sans">
                             <span className="bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">
                               {r.tag}
                             </span>
+                          </td>
+                          <td className="px-3 py-1 text-right font-sans">
+                            {r.isDuplicate ? (
+                              <span className="bg-amber-100 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded text-[10px] font-semibold">
+                                Duplicate (Skip)
+                              </span>
+                            ) : (
+                              <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 px-1.5 py-0.5 rounded text-[10px] font-semibold">
+                                New Contact
+                              </span>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -599,10 +644,14 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
               <button
                 type="button"
                 onClick={handleImportCsv}
-                disabled={!csvOptInAccepted || parsedPreview.total === 0}
+                disabled={!csvOptInAccepted || parsedPreview.newCount === 0}
                 className="px-5 py-2 bg-[#25D366] hover:bg-[#1da851] text-white rounded-xl text-sm font-bold shadow-md shadow-emerald-600/20 disabled:opacity-50 transition active:scale-95"
               >
-                Import {parsedPreview.total > 0 ? `${parsedPreview.total} Contacts` : 'Contacts'}
+                {parsedPreview.newCount > 0
+                  ? `Import ${parsedPreview.newCount} Contacts`
+                  : parsedPreview.duplicateCount > 0
+                  ? 'All Contacts Already Exist'
+                  : 'Import Contacts'}
               </button>
             </div>
           </div>

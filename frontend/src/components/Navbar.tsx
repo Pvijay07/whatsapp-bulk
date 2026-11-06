@@ -24,6 +24,7 @@ interface NavbarProps {
   onSelectTab: (tab: 'crm' | 'campaigns' | 'reports' | 'numbers' | 'autoresponder' | 'wallet') => void;
   walletBalanceINR: string;
   activeCampaignsCount: number;
+  contactsCount?: number;
   onOpenQuickCampaign: () => void;
   isLiveSyncing?: boolean;
 }
@@ -33,6 +34,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSelectTab,
   walletBalanceINR,
   activeCampaignsCount,
+  contactsCount,
   onOpenQuickCampaign,
   isLiveSyncing,
 }) => {
@@ -41,7 +43,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       id: 'crm',
       label: 'Contacts',
       icon: Users,
-      badge: '5',
+      badge: contactsCount !== undefined ? `${contactsCount}` : undefined,
     },
     {
       id: 'campaigns',
