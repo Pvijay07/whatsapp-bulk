@@ -198,6 +198,80 @@ export const App: React.FC = () => {
             return changed ? updated : prev;
           });
         }
+
+        // Sync server-side queued campaigns & live background worker progress
+        const serverCampaigns = await dynamicStore.getQueuedCampaigns();
+        if (serverCampaigns && serverCampaigns.length > 0) {
+          setCampaigns((prev) => {
+            const serverMap = new Map(serverCampaigns.map((sc: any) => [sc.id, sc]));
+            const merged = prev.map((localCamp) => {
+              if (serverMap.has(localCamp.id)) {
+                const sc = serverMap.get(localCamp.id)!;
+                return {
+                  ...localCamp,
+                  status: sc.status,
+                  sentCount: sc.sentCount,
+                  deliveredCount: sc.deliveredCount,
+                  readCount: sc.readCount,
+                  failedCount: sc.failedCount,
+                  totalContacts: sc.totalContacts,
+                  actualCostINR: sc.actualCostINR,
+                };
+              }
+              return localCamp;
+            });
+
+            for (const sc of serverCampaigns) {
+              if (!prev.some((p) => p.id === sc.id)) {
+                merged.unshift({
+                  id: sc.id,
+                  name: sc.name,
+                  dispatchType: sc.dispatchType,
+                  senderNumber: sc.senderNumber,
+                  senderPoolCount: sc.senderPoolCount || 1,
+                  customMessageText: sc.customMessageText,
+                  status: sc.status,
+                  totalContacts: sc.totalContacts,
+                  sentCount: sc.sentCount,
+                  deliveredCount: sc.deliveredCount,
+                  readCount: sc.readCount,
+                  failedCount: sc.failedCount,
+                  delayIntervalSec: sc.delayIntervalSec,
+                  spintaxEnabled: sc.spintaxEnabled,
+                  reservedINR: sc.reservedINR,
+                  actualCostINR: sc.actualCostINR,
+                  createdAt: sc.createdAt,
+                });
+              }
+            }
+            return merged;
+          });
+
+          // Sync messages from active server campaign
+          const activeCamp =
+            serverCampaigns.find((c: any) => c.status === 'SENDING' || c.status === 'PAUSED') ||
+            serverCampaigns[0];
+          if (activeCamp && activeCamp.messages && activeCamp.messages.length > 0) {
+            const sMsgs: MessageLog[] = activeCamp.messages.map((m: any) => ({
+              id: m.id,
+              campaignId: activeCamp.id,
+              contactName: m.recipientName,
+              phoneNumber: m.recipientPhoneNumber,
+              status: m.status,
+              providerMessageId:
+                m.providerMessageId || (m.status === 'QUEUED' ? 'Queued on Server Worker' : ''),
+              sentAt: m.sentAt,
+              errorCode: m.errorCode,
+              costINR: m.costINR || '1.00',
+            }));
+
+            setMessages((prev) => {
+              const existingIds = new Set(sMsgs.map((sm) => sm.id));
+              const filtered = prev.filter((p) => !existingIds.has(p.id));
+              return [...sMsgs, ...filtered];
+            });
+          }
+        }
       } catch (e) {}
     };
 
@@ -213,7 +287,7 @@ export const App: React.FC = () => {
   };
 
   // 2. Triggered when client confirms "Send with Virtual Number"
-  // TRANSMITS  MESSAGES OVER LIVE BAILEYS WEBSOCKET (ZERO SIMULATION)
+  // ENQUEUES BULK CAMPAIGN TO SERVER-SIDE BACKGROUND WORKER (HANDLES N MESSAGES SAFELY)
   const handleSendCampaign = async (data: {
     campaignName: string;
     dispatchType: 'MULTI_NUMBER_POOL' | 'DEDICATED_NUMBER';
@@ -233,139 +307,86 @@ export const App: React.FC = () => {
     spintaxEnabled: boolean;
     totalCostINR: number;
   }) => {
-    const newCampId = `camp-${Date.now()}`;
-    const newCampaign: Campaign = {
-      id: newCampId,
-      name: data.campaignName,
+    showToast(`Enqueuing ${data.recipients.length} messages to Server Background Queue...`);
+
+    const res = await dynamicStore.enqueueCampaign({
+      campaignName: data.campaignName,
       dispatchType: data.dispatchType,
       senderNumber: data.senderNumber,
-      senderPoolCount: data.senderPoolCount || 1,
+      senderPoolCount: data.senderPoolCount,
       customMessageText: data.customMessageText,
-      status: 'SENDING',
-      totalContacts: data.recipients.length,
-      sentCount: 0,
-      deliveredCount: 0,
-      readCount: 0,
-      failedCount: 0,
+      buttons: data.buttons,
+      media: data.media,
+      recipients: data.recipients.map((r) => ({ phoneNumber: r.phoneNumber, name: r.name })),
       delayIntervalSec: data.delayIntervalSec,
       spintaxEnabled: data.spintaxEnabled,
-      reservedINR: data.totalCostINR.toFixed(2),
-      actualCostINR: data.totalCostINR.toFixed(2),
-      createdAt: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
-    };
+      totalCostINR: data.totalCostINR,
+    });
 
-    setCampaigns((prev) => [newCampaign, ...prev]);
-
-    // Initial message records in QUEUED state
-    const initialLogs: MessageLog[] = data.recipients.map((rec, idx) => ({
-      id: `msg-${Date.now()}-${idx}`,
-      campaignId: newCampId,
-      contactName: rec.name,
-      phoneNumber: rec.phoneNumber,
-      status: 'QUEUED',
-      providerMessageId: 'Pending WebSocket dispatch...',
-      costINR: '1.00',
-    }));
-
-    setMessages((prev) => [...initialLogs, ...prev]);
-    showToast(`Dispatching campaign: ${data.recipients.length} real messages queued.`);
-    setCurrentTab('reports');
-
-    let sentCount = 0;
-    let failedCount = 0;
-
-    // Send each message individually across real WebSocket with humanized delay
-    for (let i = 0; i < data.recipients.length; i++) {
-      const rec = data.recipients[i];
-      const logId = initialLogs[i].id;
-
-      // Spintax & parameter resolution
-      let text = data.customMessageText.replace(/\{\{1\}\}/g, rec.name || 'Customer');
-      if (data.spintaxEnabled) {
-        text = text.replace(/\{([^{}]+)\}/g, (_, choices) => {
-          const arr = choices.split('|');
-          return arr[Math.floor(Math.random() * arr.length)];
-        });
-      }
-
-      // Delay between dispatches (anti-ban spacing)
-      if (i > 0 && data.delayIntervalSec > 0) {
-        await new Promise((r) => setTimeout(r, data.delayIntervalSec * 1000));
-      }
-
-      // REAL TRANSMISSION TO WHATSAPP NOISE PROTOCOL
-      const res = await dynamicStore.sendRealMessage(rec.phoneNumber, text, data.buttons, data.media);
-      const now = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
-      if (res.success) {
-        sentCount++;
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === logId
-              ? {
-                  ...m,
-                  status: 'SENT',
-                  providerMessageId: res.messageId,
-                  sentAt: now,
-                }
-              : m,
-          ),
-        );
-      } else {
-        failedCount++;
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === logId
-              ? {
-                  ...m,
-                  status: 'FAILED',
-                  errorCode: res.error?.includes('not registered') ? 'NOT_ON_WHATSAPP' : 'DISPATCH_FAILED',
-                  providerMessageId: res.error || 'Recipient not on WhatsApp',
-                  costINR: '0.00',
-                }
-              : m,
-          ),
-        );
-      }
-
-      // Live update campaign counters
-      setCampaigns((prev) =>
-        prev.map((c) =>
-          c.id === newCampId
-            ? {
-                ...c,
-                sentCount,
-                deliveredCount: 0,
-                failedCount,
-                status: i === data.recipients.length - 1 ? 'COMPLETED' : 'SENDING',
-              }
-            : c,
-        ),
-      );
+    if (!res.success) {
+      showToast(`❌ Error: ${res.error || 'Failed to enqueue campaign'}`);
+      return;
     }
 
-    // Deduct actual successful sends from prepaid balance
-    const actualCost = sentCount * 1.0;
-    if (actualCost > 0) {
-      const newBal = (parseFloat(wallet.balanceINR) - actualCost).toFixed(2);
-      setWallet((prev) => ({
-        ...prev,
-        balanceINR: newBal,
-        availableINR: newBal,
-        transactions: [
-          {
-            id: `tx-${Date.now()}`,
-            transactionType: 'DEBIT',
-            amountINR: `-${actualCost.toFixed(2)}`,
-            balanceAfterINR: newBal,
-            referenceId: newCampId,
-            idempotencyKey: `settle_${newCampId}_${Date.now()}`,
-            reason: `Campaign: ${data.campaignName} (${sentCount} delivered msgs @ ₹1.00)`,
-            createdAt: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
-          },
-          ...prev.transactions,
-        ],
-      }));
+    showToast(`🚀 Campaign enqueued on server! Safely running in background (safe to close browser).`);
+    setCurrentTab('reports');
+
+    // Deduct estimated cost from wallet
+    const estimatedCost = data.recipients.length * 1.0;
+    const newBal = Math.max(0, parseFloat(wallet.balanceINR) - estimatedCost).toFixed(2);
+    setWallet((prev) => ({
+      ...prev,
+      balanceINR: newBal,
+      availableINR: newBal,
+      transactions: [
+        {
+          id: `tx-${Date.now()}`,
+          transactionType: 'DEBIT',
+          amountINR: `-${estimatedCost.toFixed(2)}`,
+          balanceAfterINR: newBal,
+          referenceId: res.campaignId,
+          idempotencyKey: `enqueue_${res.campaignId}_${Date.now()}`,
+          reason: `Campaign: ${data.campaignName} (${data.recipients.length} msgs queued @ ₹1.00)`,
+          createdAt: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+        },
+        ...prev.transactions,
+      ],
+    }));
+
+    // Trigger immediate sync from server
+    const serverCampaigns = await dynamicStore.getQueuedCampaigns();
+    if (serverCampaigns && serverCampaigns.length > 0) {
+      setCampaigns(serverCampaigns);
+    }
+  };
+
+  const handlePauseCampaign = async (campaignId: string) => {
+    const ok = await dynamicStore.pauseQueuedCampaign(campaignId);
+    if (ok) {
+      showToast('Campaign queue paused on server.');
+      setCampaigns((prev) => prev.map((c) => (c.id === campaignId ? { ...c, status: 'PAUSED' } : c)));
+    } else {
+      showToast('Failed to pause campaign.');
+    }
+  };
+
+  const handleResumeCampaign = async (campaignId: string) => {
+    const ok = await dynamicStore.resumeQueuedCampaign(campaignId);
+    if (ok) {
+      showToast('Campaign queue resumed on server!');
+      setCampaigns((prev) => prev.map((c) => (c.id === campaignId ? { ...c, status: 'SENDING' } : c)));
+    } else {
+      showToast('Failed to resume campaign.');
+    }
+  };
+
+  const handleCancelCampaign = async (campaignId: string) => {
+    const ok = await dynamicStore.cancelQueuedCampaign(campaignId);
+    if (ok) {
+      showToast('Campaign queue cancelled on server.');
+      setCampaigns((prev) => prev.map((c) => (c.id === campaignId ? { ...c, status: 'CANCELLED' } : c)));
+    } else {
+      showToast('Failed to cancel campaign.');
     }
   };
 
@@ -727,6 +748,9 @@ export const App: React.FC = () => {
           <DeliveryReportsView
             campaigns={campaigns}
             messages={messages}
+            onPauseCampaign={handlePauseCampaign}
+            onResumeCampaign={handleResumeCampaign}
+            onCancelCampaign={handleCancelCampaign}
           />
         )}
 

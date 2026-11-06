@@ -21,6 +21,7 @@ interface DeliveryReportsViewProps {
   messages: MessageLog[];
   onPauseCampaign?: (campaignId: string) => void;
   onResumeCampaign?: (campaignId: string) => void;
+  onCancelCampaign?: (campaignId: string) => void;
 }
 
 export const DeliveryReportsView: React.FC<DeliveryReportsViewProps> = ({
@@ -28,6 +29,7 @@ export const DeliveryReportsView: React.FC<DeliveryReportsViewProps> = ({
   messages,
   onPauseCampaign,
   onResumeCampaign,
+  onCancelCampaign,
 }) => {
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>(
     campaigns[0]?.id || "",
@@ -96,6 +98,12 @@ export const DeliveryReportsView: React.FC<DeliveryReportsViewProps> = ({
             Track live dispatch status, delivery confirmation receipts, and read
             status from Virtual Number Gateways.
           </p>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Server Background Queue (Safe to close browser)
+            </span>
+          </div>
         </div>
 
         {/* Campaign Selector dropdown */}
@@ -214,12 +222,48 @@ export const DeliveryReportsView: React.FC<DeliveryReportsViewProps> = ({
               </span>
             </div>
 
-            <div className="text-xs text-slate-500">
-              Dispatched via{" "}
-              <span className="font-semibold text-slate-700">
-                {activeCampaign.senderNumber}
-              </span>{" "}
-              • Debited: ₹{activeCampaign.actualCostINR}
+            <div className="flex items-center gap-3">
+              <div className="text-xs text-slate-500 hidden sm:block">
+                Dispatched via{" "}
+                <span className="font-semibold text-slate-700">
+                  {activeCampaign.senderNumber}
+                </span>{" "}
+                • Debited: ₹{activeCampaign.actualCostINR}
+              </div>
+
+              {/* Server Background Controls */}
+              <div className="flex items-center gap-1.5">
+                {activeCampaign.status === "SENDING" && onPauseCampaign && (
+                  <button
+                    onClick={() => onPauseCampaign(activeCampaign.id)}
+                    className="px-2.5 py-1 text-xs font-semibold bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-300 rounded-lg flex items-center gap-1 transition shadow-xs"
+                    title="Pause background queue"
+                  >
+                    <Pause className="w-3.5 h-3.5" />
+                    Pause
+                  </button>
+                )}
+                {activeCampaign.status === "PAUSED" && onResumeCampaign && (
+                  <button
+                    onClick={() => onResumeCampaign(activeCampaign.id)}
+                    className="px-2.5 py-1 text-xs font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-300 rounded-lg flex items-center gap-1 transition shadow-xs"
+                    title="Resume background queue"
+                  >
+                    <Play className="w-3.5 h-3.5" />
+                    Resume
+                  </button>
+                )}
+                {(activeCampaign.status === "SENDING" || activeCampaign.status === "PAUSED") && onCancelCampaign && (
+                  <button
+                    onClick={() => onCancelCampaign(activeCampaign.id)}
+                    className="px-2.5 py-1 text-xs font-semibold bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-300 rounded-lg flex items-center gap-1 transition shadow-xs"
+                    title="Cancel remaining queued messages"
+                  >
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    Cancel
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 

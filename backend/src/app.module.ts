@@ -22,6 +22,7 @@ import { AuthController } from './modules/auth/auth.controller';
 import { JwtStrategy } from './modules/auth/jwt.strategy';
 
 import { SessionController } from './modules/session/session.controller';
+import { CampaignQueueService } from './modules/session/campaign-queue.service';
 import { VirtualPoolController } from './modules/virtual-pool/virtual-pool.controller';
 
 import { WalletService } from './modules/wallet/wallet.service';
@@ -81,6 +82,7 @@ import { WebhooksController } from './modules/webhooks/webhooks.controller';
     OtpRentalService,
     AccountWarmerService,
     BaileysSessionService,
+    CampaignQueueService,
     VirtualGatewayAdapter,
     MockMessagingAdapter,
     ExotelNumberAdapter,

@@ -1,9 +1,13 @@
-import { Controller, Get, Post, Body, HttpCode, HttpStatus, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, HttpCode, HttpStatus, BadRequestException } from '@nestjs/common';
 import { BaileysSessionService } from '../../providers/messaging/baileys-session.service';
+import { CampaignQueueService } from './campaign-queue.service';
 
 @Controller('session')
 export class SessionController {
-  constructor(private readonly baileysService: BaileysSessionService) {}
+  constructor(
+    private readonly baileysService: BaileysSessionService,
+    private readonly queueService: CampaignQueueService,
+  ) {}
 
   @Get('status')
   getStatus() {
@@ -115,5 +119,73 @@ export class SessionController {
     }
 
     return result;
+  }
+
+  /**
+   * Enqueues N numbers of messages into the server-side persistent background queue.
+   * Client receives instant confirmation and can safely close browser.
+   */
+  @Post('queue-campaign')
+  @HttpCode(HttpStatus.OK)
+  async enqueueCampaign(
+    @Body()
+    body: {
+      campaignName: string;
+      dispatchType?: 'MULTI_NUMBER_POOL' | 'DEDICATED_NUMBER';
+      senderNumber?: string;
+      senderPoolCount?: number;
+      customMessageText: string;
+      buttons?: any[];
+      media?: any;
+      recipients: Array<{ phoneNumber: string; name?: string }>;
+      delayIntervalSec?: number;
+      spintaxEnabled?: boolean;
+      totalCostINR?: number;
+    },
+  ) {
+    return this.queueService.enqueueCampaign(body);
+  }
+
+  /**
+   * Retrieves all enqueued campaigns and their live background progress metrics.
+   */
+  @Get('queue-campaigns')
+  async getAllQueuedCampaigns() {
+    return this.queueService.getAllCampaigns();
+  }
+
+  /**
+   * Retrieves single campaign with detailed recipient logs.
+   */
+  @Get('queue-campaigns/:id')
+  async getQueuedCampaign(@Param('id') id: string) {
+    return this.queueService.getCampaign(id);
+  }
+
+  /**
+   * Pauses an active background queue campaign.
+   */
+  @Post('queue-campaigns/:id/pause')
+  @HttpCode(HttpStatus.OK)
+  async pauseCampaign(@Param('id') id: string) {
+    return this.queueService.pauseCampaign(id);
+  }
+
+  /**
+   * Resumes a paused background queue campaign.
+   */
+  @Post('queue-campaigns/:id/resume')
+  @HttpCode(HttpStatus.OK)
+  async resumeCampaign(@Param('id') id: string) {
+    return this.queueService.resumeCampaign(id);
+  }
+
+  /**
+   * Cancels a background queue campaign.
+   */
+  @Post('queue-campaigns/:id/cancel')
+  @HttpCode(HttpStatus.OK)
+  async cancelCampaign(@Param('id') id: string) {
+    return this.queueService.cancelCampaign(id);
   }
 }

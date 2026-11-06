@@ -429,6 +429,81 @@ export class DynamicStoreManager {
       };
     }
   }
+
+  // Enqueue bulk campaign to server-side background worker (N messages)
+  async enqueueCampaign(payload: {
+    campaignName: string;
+    dispatchType?: 'MULTI_NUMBER_POOL' | 'DEDICATED_NUMBER';
+    senderNumber?: string;
+    senderPoolCount?: number;
+    customMessageText: string;
+    buttons?: any[];
+    media?: any;
+    recipients: Array<{ phoneNumber: string; name?: string }>;
+    delayIntervalSec?: number;
+    spintaxEnabled?: boolean;
+    totalCostINR?: number;
+  }): Promise<{ success: boolean; campaignId?: string; totalQueued?: number; message?: string; error?: string }> {
+    try {
+      const res = await apiClient.post('/session/queue-campaign', payload);
+      return res.data;
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err.response?.data?.message || err.message || 'Failed to enqueue campaign',
+      };
+    }
+  }
+
+  // Get all server-queued campaigns with live progress
+  async getQueuedCampaigns(): Promise<any[]> {
+    try {
+      const res = await apiClient.get('/session/queue-campaigns');
+      return res.data || [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // Get single campaign with detailed recipient logs
+  async getQueuedCampaign(campaignId: string): Promise<any | null> {
+    try {
+      const res = await apiClient.get(`/session/queue-campaigns/${campaignId}`);
+      return res.data;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Pause campaign on server
+  async pauseQueuedCampaign(campaignId: string): Promise<boolean> {
+    try {
+      const res = await apiClient.post(`/session/queue-campaigns/${campaignId}/pause`);
+      return res.data?.success;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Resume campaign on server
+  async resumeQueuedCampaign(campaignId: string): Promise<boolean> {
+    try {
+      const res = await apiClient.post(`/session/queue-campaigns/${campaignId}/resume`);
+      return res.data?.success;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Cancel campaign on server
+  async cancelQueuedCampaign(campaignId: string): Promise<boolean> {
+    try {
+      const res = await apiClient.post(`/session/queue-campaigns/${campaignId}/cancel`);
+      return res.data?.success;
+    } catch (e) {
+      return false;
+    }
+  }
 }
 
 export const dynamicStore = new DynamicStoreManager();

@@ -55,7 +55,7 @@ export interface Campaign {
   senderNumber: string;
   senderPoolCount?: number;
   customMessageText: string;
-  status: 'DRAFT' | 'SENDING' | 'COMPLETED' | 'PAUSED';
+  status: 'DRAFT' | 'QUEUED' | 'SENDING' | 'COMPLETED' | 'PAUSED' | 'CANCELLED';
   totalContacts: number;
   sentCount: number;
   deliveredCount: number;
@@ -73,7 +73,7 @@ export interface MessageLog {
   campaignId: string;
   contactName: string;
   phoneNumber: string;
-  status: 'QUEUED' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED';
+  status: 'QUEUED' | 'SENDING' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED' | 'CANCELLED';
   providerMessageId: string;
   costINR: string;
   sentAt?: string;

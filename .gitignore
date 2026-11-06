@@ -41,5 +41,6 @@ prisma/migrations/dev.db
 # Baileys WhatsApp Session Credentials
 backend/sessions/
 sessions/
+backend/data/
 *.tsbuildinfo
 

@@ -64,7 +64,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     },
     {
       id: "wallet",
-      label: "Wallet & Ledger",
+      label: "Wallet ",
       icon: Wallet,
       badge: `₹${walletBalanceINR}`,
       badgeHighlight: true,
