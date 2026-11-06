@@ -16,7 +16,8 @@ import {
   initialWarmupLogs,
 } from './store';
 import { Contact, VirtualNumber, Campaign, MessageLog, WalletData, MessageTemplate, WarmupLogEntry } from './types';
-import { Navbar, BeforeTabId } from './components/Navbar';
+import { Sidebar, AppTabId } from './components/Sidebar';
+import { TopHeader } from './components/TopHeader';
 import { ContactsView } from './components/ContactsView';
 import { WhatsAppModal } from './components/WhatsAppModal';
 import { DeliveryReportsView } from './components/DeliveryReportsView';
@@ -49,7 +50,7 @@ export const deduplicateContacts = (list: Contact[]): Contact[] => {
 };
 
 export const App: React.FC = () => {
-  const [currentTab, setCurrentTab] = useState<BeforeTabId>('crm');
+  const [currentTab, setCurrentTab] = useState<AppTabId>('crm');
 
   // Dynamic application state (v2 - Clean live storage, zero mock data, auto de-duplicated)
   const [contacts, setContacts] = useState<Contact[]>(() => {
@@ -669,7 +670,7 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] flex flex-col font-sans antialiased text-slate-900 selection:bg-teal-100 selection:text-teal-900">
+    <div className="min-h-screen bg-[#f8fafc] flex font-sans antialiased text-slate-900 selection:bg-teal-100 selection:text-teal-900">
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed top-5 right-5 z-50 bg-[#0f172a] text-white px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-2 border border-slate-700 animate-in fade-in slide-in-from-top-4 duration-300">
@@ -678,141 +679,165 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* Top Navbar: ONLY the 5 before tabs */}
-      <Navbar
+      {/* Dark Sidebar matching screenshot */}
+      <Sidebar
         currentTab={currentTab}
         onSelectTab={setCurrentTab}
-        walletBalanceINR={wallet.availableINR}
-        activeCampaignsCount={campaigns.filter((c) => c.status === 'SENDING').length}
         contactsCount={contacts.length}
-        onOpenQuickCampaign={() => handleOpenWhatsApp(null)}
-        isOnline={virtualNumbers.some((n) => n.id === 'real-linked-session' && n.status === 'ACTIVE')}
+        activeCampaignsCount={campaigns.filter((c) => c.status === 'SENDING').length}
+        walletBalanceINR={wallet.availableINR}
       />
 
-      {/* Main Content Area */}
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {currentTab === 'crm' && (
-          <ContactsView
-            contacts={contacts}
-            onOpenWhatsApp={handleOpenWhatsApp}
-            onAddContact={handleAddContact}
-            onImportCsv={handleImportCsv}
-            onGroupGrabberExtract={handleGroupGrabberExtract}
-            onDeleteContact={handleDeleteContact}
-            onUpdateContact={handleUpdateContact}
-          />
-        )}
+      {/* Main Content Area with TopHeader */}
+      <div className="flex-1 flex flex-col min-w-0">
+        <TopHeader onInstantHelp={() => handleOpenWhatsApp(null)} />
 
-        {currentTab === 'campaigns' && (
-          <div className="space-y-6">
-            <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-                  <Send className="w-6 h-6 text-[#00b493]" />
-                  Campaign History & Live Senders
-                </h2>
-                <p className="text-sm text-slate-500 mt-1">
-                  Manage active WhatsApp dispatches across your verified Indian virtual channels.
-                </p>
-              </div>
-              <button
-                onClick={() => handleOpenWhatsApp(null)}
-                className="px-4 py-2 bg-[#00b493] hover:bg-[#009e81] text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-2 active:scale-95"
-              >
-                <Plus className="w-4 h-4 stroke-[2.5]" />
-                New Campaign
-              </button>
-            </div>
+        <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          {currentTab === 'crm' && (
+            <ContactsView
+              contacts={contacts}
+              onOpenWhatsApp={handleOpenWhatsApp}
+              onAddContact={handleAddContact}
+              onImportCsv={handleImportCsv}
+              onGroupGrabberExtract={handleGroupGrabberExtract}
+              onDeleteContact={handleDeleteContact}
+              onUpdateContact={handleUpdateContact}
+            />
+          )}
 
-            {campaigns.length === 0 ? (
-              <div className="bg-white p-12 rounded-2xl border border-slate-200/80 text-center space-y-3">
-                <Send className="w-12 h-12 text-slate-300 mx-auto" />
-                <h3 className="text-base font-bold text-slate-800">No Campaigns Dispatched Yet</h3>
-                <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                  Click 'New Campaign' or select a contact in Contacts to dispatch your first bulk WhatsApp campaign.
-                </p>
+          {currentTab === 'campaigns' && (
+            <div className="space-y-6">
+              <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+                    <Send className="w-6 h-6 text-[#00b493]" />
+                    Campaign History & Live Senders
+                  </h2>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Manage active WhatsApp dispatches across your verified Indian virtual channels.
+                  </p>
+                </div>
                 <button
                   onClick={() => handleOpenWhatsApp(null)}
-                  className="px-4 py-2 bg-[#00b493] hover:bg-[#009e81] text-white text-xs font-bold rounded-xl shadow-xs"
+                  className="px-4 py-2 bg-[#00b493] hover:bg-[#009e81] text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-2 active:scale-95"
                 >
-                  Create Campaign
+                  <Plus className="w-4 h-4 stroke-[2.5]" />
+                  New Campaign
                 </button>
               </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {campaigns.map((camp) => (
-                  <div
-                    key={camp.id}
-                    className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-3"
+
+              {campaigns.length === 0 ? (
+                <div className="bg-white p-12 rounded-2xl border border-slate-200/80 text-center space-y-3">
+                  <Send className="w-12 h-12 text-slate-300 mx-auto" />
+                  <h3 className="text-base font-bold text-slate-800">No Campaigns Dispatched Yet</h3>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                    Click 'New Campaign' or select a contact in Contacts to dispatch your first bulk WhatsApp campaign.
+                  </p>
+                  <button
+                    onClick={() => handleOpenWhatsApp(null)}
+                    className="px-4 py-2 bg-[#00b493] hover:bg-[#009e81] text-white text-xs font-bold rounded-xl shadow-xs"
                   >
-                    <div className="flex items-center justify-between">
-                      <span
-                        className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${
-                          camp.status === 'COMPLETED'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : camp.status === 'SENDING'
-                            ? 'bg-blue-100 text-blue-800 animate-pulse'
-                            : 'bg-amber-100 text-amber-800'
-                        }`}
-                      >
-                        ● {camp.status}
-                      </span>
-                      <span className="text-xs text-slate-400">{camp.createdAt}</span>
+                    Create Campaign
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {campaigns.map((camp) => (
+                    <div
+                      key={camp.id}
+                      className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span
+                          className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${
+                            camp.status === 'COMPLETED'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : camp.status === 'SENDING'
+                              ? 'bg-blue-100 text-blue-800 animate-pulse'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          ● {camp.status}
+                        </span>
+                        <span className="text-xs text-slate-400">{camp.createdAt}</span>
+                      </div>
+                      <h3 className="text-base font-bold text-slate-900">{camp.name}</h3>
+                      <div className="text-xs text-slate-600">
+                        Sender: <span className="font-mono font-semibold">{camp.senderNumber}</span> • Mode:{' '}
+                        <span className="font-semibold text-emerald-700">
+                          {camp.dispatchType === 'MULTI_NUMBER_POOL' ? 'Virtual Pool' : 'Dedicated'}
+                        </span>
+                      </div>
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                        <span>
+                          Delivered: <strong className="text-emerald-700">{camp.deliveredCount}</strong>/{camp.totalContacts}
+                          {camp.failedCount > 0 && <span className="text-rose-600 ml-2">({camp.failedCount} failed)</span>}
+                        </span>
+                        <button
+                          onClick={() => setCurrentTab('reports')}
+                          className="text-[#00897b] font-bold hover:underline"
+                        >
+                          View Live Report →
+                        </button>
+                      </div>
                     </div>
-                    <h3 className="text-base font-bold text-slate-900">{camp.name}</h3>
-                    <div className="text-xs text-slate-600">
-                      Sender: <span className="font-mono font-semibold">{camp.senderNumber}</span> • Mode:{' '}
-                      <span className="font-semibold text-emerald-700">
-                        {camp.dispatchType === 'MULTI_NUMBER_POOL' ? 'Virtual Pool' : 'Dedicated'}
-                      </span>
-                    </div>
-                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                      <span>
-                        Delivered: <strong className="text-emerald-700">{camp.deliveredCount}</strong>/{camp.totalContacts}
-                        {camp.failedCount > 0 && <span className="text-rose-600 ml-2">({camp.failedCount} failed)</span>}
-                      </span>
-                      <button
-                        onClick={() => setCurrentTab('reports')}
-                        className="text-[#00897b] font-bold hover:underline"
-                      >
-                        View Live Report →
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {currentTab === 'reports' && (
+            <DeliveryReportsView
+              campaigns={campaigns}
+              messages={messages}
+              onPauseCampaign={handlePauseCampaign}
+              onResumeCampaign={handleResumeCampaign}
+              onCancelCampaign={handleCancelCampaign}
+            />
+          )}
+
+          {currentTab === 'numbers' && (
+            <VirtualNumbersView
+              numbers={virtualNumbers}
+              onPurchaseNumber={handlePurchaseNumber}
+              onAutoProvisionNumber={handleAutoProvisionNumber}
+              warmupLogs={warmupLogs}
+              onTriggerWarmup={handleTriggerWarmup}
+              walletBalanceINR={wallet.availableINR}
+            />
+          )}
+
+          {currentTab === 'wallet' && (
+            <WalletView
+              wallet={wallet}
+              onTopUp={handleTopUp}
+            />
+          )}
+
+          {currentTab === 'support' && (
+            <div className="bg-white p-8 rounded-2xl border border-slate-200/80 shadow-xs max-w-xl mx-auto my-12 text-center space-y-4">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center mx-auto">
+                <CheckCircle2 className="w-6 h-6" />
               </div>
-            )}
-          </div>
-        )}
-
-        {currentTab === 'reports' && (
-          <DeliveryReportsView
-            campaigns={campaigns}
-            messages={messages}
-            onPauseCampaign={handlePauseCampaign}
-            onResumeCampaign={handleResumeCampaign}
-            onCancelCampaign={handleCancelCampaign}
-          />
-        )}
-
-        {currentTab === 'numbers' && (
-          <VirtualNumbersView
-            numbers={virtualNumbers}
-            onPurchaseNumber={handlePurchaseNumber}
-            onAutoProvisionNumber={handleAutoProvisionNumber}
-            warmupLogs={warmupLogs}
-            onTriggerWarmup={handleTriggerWarmup}
-            walletBalanceINR={wallet.availableINR}
-          />
-        )}
-
-        {currentTab === 'wallet' && (
-          <WalletView
-            wallet={wallet}
-            onTopUp={handleTopUp}
-          />
-        )}
-      </main>
+              <h3 className="text-lg font-bold text-slate-900">Dedicated Customer Support</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Connect directly with our engineering and accounts team via WhatsApp or raise a priority ticket.
+              </p>
+              <div className="pt-2 flex justify-center gap-3">
+                <a
+                  href="https://wa.me/918897727709?text=Hi%20SalesBuster%20Support%2C%20I%20need%20help"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 bg-[#00b493] hover:bg-[#009e81] text-white rounded-xl text-xs font-bold transition shadow-xs"
+                >
+                  Chat with Support on WhatsApp
+                </a>
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
 
       {/* Central WhatsApp Campaign Creation & Dispatch Modal */}
       <WhatsAppModal

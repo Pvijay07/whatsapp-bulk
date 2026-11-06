@@ -91,11 +91,10 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
   // Helper for Service Dot Color
   const getServiceColor = (serviceName: string) => {
     const s = serviceName.toLowerCase();
+    if (s.includes('store') || s.includes('online') || s.includes('vip')) return 'bg-amber-500';
     if (s.includes('training')) return 'bg-purple-500';
     if (s.includes('job') || s.includes('career')) return 'bg-emerald-500';
-    if (s.includes('general') || s.includes('enquiry')) return 'bg-cyan-500';
-    if (s.includes('vip') || s.includes('store')) return 'bg-amber-500';
-    return 'bg-blue-500';
+    return 'bg-blue-600';
   };
 
   // Helper for Rep Avatar styling
@@ -343,10 +342,10 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
           {/* Group Grabber Button */}
           <button
             onClick={() => setShowGrabberModal(true)}
-            className="px-3 py-2 bg-emerald-50/80 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition shadow-2xs flex items-center gap-1.5"
+            className="px-3.5 py-2 bg-[#ecfdf5] hover:bg-[#d1fae5] text-[#047857] border border-[#a7f3d0] rounded-xl text-xs font-bold transition shadow-2xs flex items-center gap-1.5"
             title="Extract leads from WhatsApp group messages"
           >
-            <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+            <Sparkles className="w-3.5 h-3.5 text-[#059669]" />
             <span>Group Grabber</span>
           </button>
         </div>
@@ -468,9 +467,9 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
                         </div>
                         <div className="flex items-center gap-1.5 mt-0.5 font-mono text-[11px] text-slate-500">
                           <Phone className="w-3 h-3 text-slate-400 shrink-0" />
-                          <span>{formattedPhone}</span>
+                          <span>{contact.phoneNumber}</span>
                           <button
-                            onClick={() => handleCopyPhone(contact.id, formattedPhone)}
+                            onClick={() => handleCopyPhone(contact.id, contact.phoneNumber)}
                             className="p-0.5 hover:text-slate-800 transition-colors rounded"
                             title="Copy phone number"
                           >
@@ -494,14 +493,26 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
                       {/* SOURCE */}
                       <td className="px-5 py-3.5">
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
-                          WhatsApp
+                          <span className="text-[10px] text-emerald-600 font-bold">@</span>
+                          <span>WhatsApp</span>
                         </span>
                       </td>
 
                       {/* STATUS */}
                       <td className="px-5 py-3.5">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-sky-50 text-sky-700 border border-sky-200/80">
-                          ✨ {statusName}
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
+                            statusName.toLowerCase() === 'active'
+                              ? 'bg-amber-50 text-amber-700 border-amber-200/80'
+                              : 'bg-sky-50 text-sky-700 border-sky-200/80'
+                          }`}
+                        >
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              statusName.toLowerCase() === 'active' ? 'bg-amber-500' : 'bg-sky-500'
+                            }`}
+                          />
+                          {statusName}
                         </span>
                       </td>
 
