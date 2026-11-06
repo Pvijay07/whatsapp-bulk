@@ -1,33 +1,34 @@
-import React from "react";
+import React from 'react';
 import {
   Users,
   Send,
   BarChart3,
   PhoneCall,
   Wallet,
-  ShieldCheck,
-  MessageSquare,
   Plus,
-} from "lucide-react";
+  Zap,
+  AlertCircle,
+  Sun,
+} from 'lucide-react';
+
+export type BeforeTabId = 'crm' | 'campaigns' | 'reports' | 'numbers' | 'wallet';
 
 interface NavItem {
-  id: "crm" | "campaigns" | "reports" | "numbers" | "wallet";
+  id: BeforeTabId;
   label: string;
-  icon: any;
+  icon: React.ComponentType<{ className?: string }>;
   badge?: string;
-  badgeHighlight?: boolean;
+  isWalletBadge?: boolean;
 }
 
 interface NavbarProps {
-  currentTab: "crm" | "campaigns" | "reports" | "numbers" | "wallet";
-  onSelectTab: (
-    tab: "crm" | "campaigns" | "reports" | "numbers" | "wallet",
-  ) => void;
+  currentTab: BeforeTabId;
+  onSelectTab: (tab: BeforeTabId) => void;
   walletBalanceINR: string;
   activeCampaignsCount: number;
   contactsCount?: number;
   onOpenQuickCampaign: () => void;
-  isLiveSyncing?: boolean;
+  isOnline?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -37,66 +38,58 @@ export const Navbar: React.FC<NavbarProps> = ({
   activeCampaignsCount,
   contactsCount,
   onOpenQuickCampaign,
-  isLiveSyncing,
+  isOnline = false,
 }) => {
+  // ONLY the 5 tabs from before
   const navItems: NavItem[] = [
     {
-      id: "crm",
-      label: "Contacts",
+      id: 'crm',
+      label: 'Contacts',
       icon: Users,
       badge: contactsCount !== undefined ? `${contactsCount}` : undefined,
     },
     {
-      id: "campaigns",
-      label: "Campaigns",
+      id: 'campaigns',
+      label: 'Campaigns',
       icon: Send,
       badge: activeCampaignsCount > 0 ? `${activeCampaignsCount}` : undefined,
     },
     {
-      id: "reports",
-      label: "Delivery Reports",
+      id: 'reports',
+      label: 'Delivery Reports',
       icon: BarChart3,
     },
     {
-      id: "numbers",
-      label: "Virtual Numbers (+91)",
+      id: 'numbers',
+      label: 'Virtual Numbers (+91)',
       icon: PhoneCall,
     },
     {
-      id: "wallet",
-      label: "Wallet ",
+      id: 'wallet',
+      label: 'Wallet & Ledger',
       icon: Wallet,
       badge: `₹${walletBalanceINR}`,
-      badgeHighlight: true,
+      isWalletBadge: true,
     },
   ];
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-slate-900 border-b border-slate-800 shadow-md">
+    <header className="sticky top-0 z-40 w-full bg-white border-b border-slate-200/80 shadow-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 gap-4">
-          {/* Brand Logo & Title */}
-          <div className="flex items-center space-x-3 shrink-0">
-            <div className="w-9 h-9 rounded-xl bg-[#25D366] flex items-center justify-center text-white shadow-md shadow-emerald-950/40">
-              <MessageSquare className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-base font-bold text-white tracking-tight">
-                  SalesBuster
-                </span>
-                <span className="text-[10px] bg-emerald-500/20 text-emerald-400 font-bold px-1.5 py-0.5 rounded border border-emerald-500/30">
-                  +91
-                </span>
-              </div>
-              <p className="text-[10px] text-slate-400 leading-none">
-                Enterprise Platform
-              </p>
-            </div>
+          {/* Brand Logo matching salesbuster.ai */}
+          <div
+            className="flex items-center gap-1.5 cursor-pointer shrink-0 select-none"
+            onClick={() => onSelectTab('crm')}
+          >
+            <span className="text-xl font-extrabold tracking-tight text-[#0f172a]">salesbuster</span>
+            <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-[#e6fffa] text-[#00a79d] border border-[#99f6e4]/60">
+              .ai
+            </span>
           </div>
 
-          {/* Navigation Links */}
-          <nav className="hidden md:flex items-center space-x-1">
+          {/* Navigation Links: ONLY the 5 before tabs */}
+          <nav className="hidden md:flex items-center space-x-1.5">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = currentTab === item.id;
@@ -104,25 +97,27 @@ export const Navbar: React.FC<NavbarProps> = ({
               return (
                 <button
                   key={item.id}
-                  onClick={() => onSelectTab(item.id as any)}
-                  className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                  onClick={() => onSelectTab(item.id)}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
                     isActive
-                      ? "bg-[#128C7E] text-white shadow-sm"
-                      : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                      ? 'bg-[#e8f7fa] text-[#00897b] font-bold shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                   }`}
                 >
                   <Icon
-                    className={`w-3.5 h-3.5 ${isActive ? "text-white" : "text-slate-400"}`}
+                    className={`w-3.5 h-3.5 ${
+                      isActive ? 'text-[#00897b]' : 'text-slate-400 group-hover:text-slate-600'
+                    }`}
                   />
                   <span>{item.label}</span>
                   {item.badge && (
                     <span
                       className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                        item.badgeHighlight
-                          ? "bg-emerald-400/20 text-emerald-300 border border-emerald-400/30"
+                        item.isWalletBadge
+                          ? 'bg-[#e6fffa] text-[#00a79d] border border-[#99f6e4]'
                           : isActive
-                            ? "bg-black/20 text-white"
-                            : "bg-slate-800 text-slate-400"
+                          ? 'bg-[#00897b] text-white'
+                          : 'bg-slate-100 text-slate-500'
                       }`}
                     >
                       {item.badge}
@@ -133,61 +128,66 @@ export const Navbar: React.FC<NavbarProps> = ({
             })}
           </nav>
 
-          {/* Right Section: Tenant Info, Wallet Balance & Quick Campaign Action */}
-          <div className="flex items-center space-x-3 shrink-0">
-            {/* Live Dynamic Engine Indicator */}
-            <div className="hidden lg:flex items-center gap-1.5 text-[11px] font-semibold text-emerald-400 bg-emerald-950/70 px-2.5 py-1 rounded-full border border-emerald-500/30">
-              <span className="w-2 h-2 rounded-full bg-[#25D366] animate-pulse" />
-              <span>
-                {isLiveSyncing ? "Live Syncing..." : "Dynamic Engine Active"}
-              </span>
-            </div>
+          {/* Right Section Actions */}
+          <div className="flex items-center space-x-2.5 shrink-0">
+            {/* Live Handset Status */}
+            {isOnline && (
+              <div
+                onClick={() => onSelectTab('numbers')}
+                className="hidden lg:flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 cursor-pointer hover:bg-emerald-100 transition"
+                title="WhatsApp Handset Connected"
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>+91 Handset Linked</span>
+              </div>
+            )}
 
-            {/* Tenant Pill */}
-            <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-400 bg-slate-800/80 px-2.5 py-1.5 rounded-lg border border-slate-700/60">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="font-medium text-slate-200">
-                Demo Enterprises
-              </span>
-            </div>
-
-            {/* Wallet Balance Pill */}
-            <button
-              onClick={() => onSelectTab("wallet")}
-              className="flex items-center gap-1.5 text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-lg hover:bg-emerald-500/20 transition"
-              title="Click to view Wallet & Transactions"
+            {/* Instant Support */}
+            <a
+              href="https://wa.me/918897727709?text=Hi%20SalesBuster%20Team%2C%20I%20need%20assistance"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-[#00897b] bg-[#e6fffa]/80 hover:bg-[#e6fffa] border border-[#99f6e4] transition shadow-2xs"
             >
-              <Wallet className="w-3.5 h-3.5" />
-              <span>₹{walletBalanceINR}</span>
-            </button>
+              <Zap className="w-3.5 h-3.5 fill-[#00b493] text-[#00b493]" />
+              <span>Instant Support</span>
+            </a>
 
-            {/* Quick Launch WhatsApp Button */}
+            {/* Primary Action: New Campaign Button */}
             <button
               onClick={onOpenQuickCampaign}
-              className="px-3 py-1.5 bg-[#25D366] hover:bg-[#1da851] text-white rounded-lg text-xs font-bold shadow-sm shadow-emerald-600/30 transition flex items-center gap-1.5 active:scale-95"
+              className="px-3.5 py-1.5 bg-[#00b493] hover:bg-[#009e81] text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5 active:scale-95"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>New Campaign</span>
+              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>+ New Campaign</span>
             </button>
+
+            {/* User Avatar Circle */}
+            <div
+              className="w-8 h-8 rounded-full bg-[#0f172a] text-white flex items-center justify-center text-xs font-bold shadow-xs select-none ring-2 ring-slate-100"
+              title="Admin User (IN)"
+            >
+              IN
+            </div>
           </div>
         </div>
 
-        {/* Mobile Nav row (visible on small screens) */}
-        <div className="flex md:hidden overflow-x-auto py-2 space-x-1 border-t border-slate-800">
+        {/* Mobile Navigation bar (visible on mobile screens) */}
+        <div className="flex md:hidden overflow-x-auto py-2 space-x-1 border-t border-slate-100 scrollbar-none">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentTab === item.id;
             return (
               <button
                 key={item.id}
-                onClick={() => onSelectTab(item.id as any)}
-                className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition ${
+                onClick={() => onSelectTab(item.id)}
+                className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
                   isActive
-                    ? "bg-[#128C7E] text-white"
-                    : "text-slate-400 hover:bg-slate-800 hover:text-white"
+                    ? 'bg-[#e8f7fa] text-[#00897b] font-bold'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
-                <Icon className="w-3 h-3" />
+                <Icon className="w-3.5 h-3.5" />
                 <span>{item.label}</span>
               </button>
             );

@@ -48,7 +48,6 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
   const [selectedService, setSelectedService] = useState('ALL');
   const [selectedRep, setSelectedRep] = useState('ALL');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
-  const [activePipelinePill, setActivePipelinePill] = useState('New Leads');
 
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
@@ -81,18 +80,6 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
     `name,phone,service,rep\nRahul Mehta,+919811122233,General Enquiry,ABHI\nSneha Sen,+919822233344,Training,saiteja`,
   );
   const [csvOptInAccepted, setCsvOptInAccepted] = useState(true);
-
-  // Pipeline Filter Pills definition matching reference screenshot
-  const pipelinePills = [
-    { id: 'Old Leads', label: 'Old Leads', count: 1788 },
-    { id: 'New Leads', label: 'New Leads', count: 2242 },
-    { id: 'Missed Calls', label: 'Missed Calls', count: 163 },
-    { id: 'Today Followups', label: 'Today Followups', count: 280 },
-    { id: 'Upcoming Followups', label: 'Upcoming Followups', count: 0 },
-    { id: 'Not Attended', label: 'Not Attended', count: 408 },
-    { id: 'Converted', label: 'Converted', count: 869 },
-    { id: 'Lost/Dropped', label: 'Lost/Dropped', count: 407 },
-  ];
 
   // Helper for phone copy
   const handleCopyPhone = (id: string, phone: string) => {
@@ -363,42 +350,6 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
             <span>Group Grabber</span>
           </button>
         </div>
-      </div>
-
-      {/* Horizontal Pipeline Filter Pills Bar */}
-      <div className="flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-none">
-        <button className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 shrink-0">
-          <ChevronLeft className="w-4 h-4" />
-        </button>
-
-        {pipelinePills.map((pill) => {
-          const isActive = activePipelinePill === pill.id;
-
-          return (
-            <button
-              key={pill.id}
-              onClick={() => setActivePipelinePill(pill.id)}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-2 shrink-0 ${
-                isActive
-                  ? 'bg-[#1e293b] text-white shadow-xs'
-                  : 'bg-white border border-slate-200/90 text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-              }`}
-            >
-              <span>{pill.label}</span>
-              <span
-                className={`text-[11px] font-bold px-1.5 py-0.2 rounded-full ${
-                  isActive ? 'bg-slate-700 text-slate-200' : 'bg-slate-100 text-slate-500'
-                }`}
-              >
-                {pill.id === 'New Leads' ? contacts.length || pill.count : pill.count}
-              </span>
-            </button>
-          );
-        })}
-
-        <button className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 shrink-0">
-          <ChevronRight className="w-4 h-4" />
-        </button>
       </div>
 
       {/* Search and Filters Bar Card */}
