@@ -19,6 +19,7 @@ import { Contact, VirtualNumber, Campaign, MessageLog, WalletData, MessageTempla
 import { Sidebar, AppTabId } from './components/Sidebar';
 import { TopHeader } from './components/TopHeader';
 import { ContactsView } from './components/ContactsView';
+import { LoginView } from './components/LoginView';
 import { WhatsAppModal } from './components/WhatsAppModal';
 import { DeliveryReportsView } from './components/DeliveryReportsView';
 import { VirtualNumbersView } from './components/VirtualNumbersView';
@@ -51,6 +52,31 @@ export const deduplicateContacts = (list: Contact[]): Contact[] => {
 
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<AppTabId>('crm');
+
+  // User Authentication State (Default logged in with demo, togglable via Login/Logout)
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return dynamicStore.isAuthenticated();
+  });
+  const [currentUser, setCurrentUser] = useState<{ email: string; name: string } | null>(() => {
+    return dynamicStore.getCurrentUser() || { email: 'info@sibestce.in', name: 'Admin info' };
+  });
+
+  const handleLogin = async (credentials: { email: string; password: string }) => {
+    const res = await dynamicStore.login(credentials);
+    if (res.success) {
+      setIsAuthenticated(true);
+      setCurrentUser(res.user || { email: credentials.email, name: 'Admin info' });
+      showToast(`Welcome back, ${res.user?.name || 'Admin'}!`);
+      return { success: true };
+    }
+    return { success: false, error: res.error };
+  };
+
+  const handleLogout = () => {
+    dynamicStore.logout();
+    setIsAuthenticated(false);
+    showToast('Logged out of salesbuster.ai successfully.');
+  };
 
   // Dynamic application state (v2 - Clean live storage, zero mock data, auto de-duplicated)
   const [contacts, setContacts] = useState<Contact[]>(() => {
@@ -669,6 +695,21 @@ export const App: React.FC = () => {
     }
   };
 
+  // If unauthenticated, display the full Login View
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-[#f8fafc] font-sans antialiased text-slate-900">
+        {toastMessage && (
+          <div className="fixed top-5 right-5 z-50 bg-[#0f172a] text-white px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-2 border border-slate-700 animate-in fade-in slide-in-from-top-4 duration-300">
+            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+            <span className="text-sm font-medium">{toastMessage}</span>
+          </div>
+        )}
+        <LoginView onLogin={handleLogin} />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#f8fafc] flex font-sans antialiased text-slate-900 selection:bg-teal-100 selection:text-teal-900">
       {/* Toast Notification */}
@@ -686,11 +727,18 @@ export const App: React.FC = () => {
         contactsCount={contacts.length}
         activeCampaignsCount={campaigns.filter((c) => c.status === 'SENDING').length}
         walletBalanceINR={wallet.availableINR}
+        userName={currentUser?.name}
+        userEmail={currentUser?.email}
+        onLogout={handleLogout}
       />
 
       {/* Main Content Area with TopHeader */}
       <div className="flex-1 flex flex-col min-w-0">
-        <TopHeader onInstantHelp={() => handleOpenWhatsApp(null)} />
+        <TopHeader
+          onInstantHelp={() => handleOpenWhatsApp(null)}
+          userEmail={currentUser?.email}
+          onLogout={handleLogout}
+        />
 
         <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {currentTab === 'crm' && (

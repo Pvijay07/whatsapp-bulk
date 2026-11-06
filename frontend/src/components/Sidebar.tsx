@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Users,
   Megaphone,
@@ -8,6 +8,8 @@ import {
   Headphones,
   HelpCircle,
   ChevronDown,
+  LogOut,
+  ShieldCheck,
 } from 'lucide-react';
 
 export type AppTabId = 'crm' | 'campaigns' | 'reports' | 'numbers' | 'wallet' | 'support';
@@ -18,6 +20,9 @@ interface SidebarProps {
   contactsCount?: number;
   activeCampaignsCount?: number;
   walletBalanceINR?: string;
+  userName?: string;
+  userEmail?: string;
+  onLogout?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -26,7 +31,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   contactsCount,
   activeCampaignsCount,
   walletBalanceINR,
+  userName = 'Admin info',
+  userEmail = 'info@sibestce.in',
+  onLogout,
 }) => {
+  const [showUserMenu, setShowUserMenu] = useState(false);
+
   const navItems = [
     {
       id: 'crm' as AppTabId,
@@ -101,8 +111,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         })}
       </nav>
 
-      {/* Bottom Area: Support link & User Profile */}
-      <div className="p-3 border-t border-[#152336] space-y-2">
+      {/* Bottom Area: Support link & User Profile with Logout */}
+      <div className="p-3 border-t border-[#152336] space-y-2 relative">
         {/* Support Help link */}
         <button
           onClick={() => onSelectTab('support')}
@@ -113,19 +123,54 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </button>
 
         {/* User Profile Card */}
-        <div className="flex items-center justify-between p-2 rounded-xl hover:bg-[#121f31] transition-colors cursor-pointer group">
+        <div
+          onClick={() => setShowUserMenu(!showUserMenu)}
+          className="flex items-center justify-between p-2 rounded-xl hover:bg-[#121f31] transition-colors cursor-pointer group relative"
+          title="Click to view profile & logout"
+        >
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-8 h-8 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center text-xs font-bold text-white shrink-0 overflow-hidden">
               <span className="text-[11px]">AI</span>
             </div>
             <div className="min-w-0">
-              <div className="text-xs font-bold text-white truncate">Admin info</div>
-              <div className="text-[10px] text-slate-400 truncate">info@sibestce.in</div>
+              <div className="text-xs font-bold text-white truncate">{userName}</div>
+              <div className="text-[10px] text-slate-400 truncate">{userEmail}</div>
             </div>
           </div>
-          <ChevronDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-200 shrink-0" />
+          <ChevronDown
+            className={`w-3.5 h-3.5 text-slate-400 group-hover:text-slate-200 shrink-0 transition-transform ${
+              showUserMenu ? 'rotate-180' : ''
+            }`}
+          />
         </div>
+
+        {/* Logout Popover Menu */}
+        {showUserMenu && (
+          <div className="absolute bottom-16 left-3 right-3 bg-[#111e30] border border-slate-700/80 rounded-2xl p-2.5 shadow-2xl space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-150 z-40">
+            <div className="px-2 py-1">
+              <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Super Administrator</span>
+              </div>
+              <div className="text-[10px] text-slate-400 mt-0.5 truncate">{userEmail}</div>
+            </div>
+
+            <div className="border-t border-slate-800 pt-1">
+              <button
+                onClick={() => {
+                  setShowUserMenu(false);
+                  onLogout?.();
+                }}
+                className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-rose-400 hover:text-white hover:bg-rose-500/20 transition-all text-left"
+              >
+                <LogOut className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>Log Out</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </aside>
   );
 };
+
