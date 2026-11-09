@@ -499,6 +499,26 @@ export class DynamicStoreManager {
     }
   }
 
+  // Update or clear dedicated proxy for WhatsApp account
+  async updateSessionProxy(sessionId: string, proxyUrl: string | null): Promise<{ success: boolean; message: string }> {
+    try {
+      const res = await apiClient.post(`/session/accounts/${sessionId}/proxy`, { proxyUrl });
+      return res.data;
+    } catch (err: any) {
+      return { success: false, message: err.response?.data?.message || err.message };
+    }
+  }
+
+  // Retrieve 6 Golden Rules Anti-Ban Health & Quota report
+  async getAntiBanHealth(): Promise<any> {
+    try {
+      const res = await apiClient.get('/session/anti-ban/health');
+      return res.data;
+    } catch (err) {
+      return null;
+    }
+  }
+
   // Enqueue bulk campaign to server-side background worker (N messages)
   async enqueueCampaign(payload: {
     campaignName: string;

@@ -52,6 +52,33 @@ export interface ConnectedWhatsAppAccount {
   connectedNumber: string | null;
   qrCodeDataUrl: string | null;
   createdAt?: string;
+  proxyUrl?: string | null;
+  dailySentCount?: number;
+  lastSentDate?: string;
+  maxDailySafeCap?: number;
+  warmupStage?: 'WARMING_UP' | 'MATURING' | 'WARMED_UP';
+  daysActive?: number;
+}
+
+export interface AntiBanRuleInfo {
+  ruleNumber: number;
+  name: string;
+  status: 'OPTIMAL' | 'FUNCTIONAL' | 'ACTIVE' | 'ENFORCED' | 'STANDBY' | 'PARTIAL' | 'OFFLINE';
+  details: string;
+  metrics?: Record<string, any>;
+}
+
+export interface AntiBanHealthReport {
+  status: string;
+  rules: AntiBanRuleInfo[];
+  summary: {
+    onlineAccounts: number;
+    totalAccounts: number;
+    proxiesConfigured: number;
+    poolDailySent: number;
+    poolDailyCap: number;
+    remainingSafeQuota: number;
+  };
 }
 
 export interface MessageTemplate {

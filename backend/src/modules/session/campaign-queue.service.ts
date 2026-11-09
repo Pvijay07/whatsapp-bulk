@@ -50,6 +50,25 @@ export interface QueuedCampaign {
   messages: QueuedMessage[];
 }
 
+/**
+ * Golden Rule 5: Box-Muller Gaussian Jitter Generator.
+ * Transforms uniform random variables into a normal distribution centered at meanSec,
+ * bounded between minSec and maxSec. Prevents machine-pattern detection by Meta heuristics.
+ */
+export function getGaussianJitter(
+  meanSec: number,
+  stdDevSec = 6,
+  minSec = 18,
+  maxSec = 65,
+): number {
+  let u1 = Math.random();
+  let u2 = Math.random();
+  while (u1 === 0) u1 = Math.random(); // avoid log(0)
+  const z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+  const sample = meanSec + z0 * stdDevSec;
+  return Math.max(minSec, Math.min(maxSec, Math.round(sample)));
+}
+
 @Injectable()
 export class CampaignQueueService implements OnModuleInit {
   private readonly logger = new Logger(CampaignQueueService.name);
@@ -89,10 +108,10 @@ export class CampaignQueueService implements OnModuleInit {
         for (const c of data) {
           this.campaigns.set(c.id, c);
         }
-        this.logger.log(`Loaded ${this.campaigns.size} campaigns from disk queue storage.`);
+        this.logger.log(`Loaded ${this.campaigns.size} campaign(s) from disk store.`);
       }
-    } catch (err: any) {
-      this.logger.error(`Failed to load campaign queue from disk: ${err.message}`);
+    } catch (e: any) {
+      this.logger.error(`Failed to load campaigns store: ${e.message}`);
     }
   }
 
@@ -100,22 +119,22 @@ export class CampaignQueueService implements OnModuleInit {
     try {
       const data = Array.from(this.campaigns.values());
       fs.writeFileSync(this.storageFilePath, JSON.stringify(data, null, 2), 'utf8');
-    } catch (err: any) {
-      this.logger.error(`Failed to persist campaign queue to disk: ${err.message}`);
+    } catch (e: any) {
+      this.logger.error(`Failed to persist campaigns store: ${e.message}`);
     }
   }
 
   /**
-   * Enqueues N numbers of messages into the persistent server-side background queue.
-   * Returns immediately so the frontend / user does not need to wait or keep browser open.
+   * Enqueues a full bulk campaign onto the asynchronous server queue.
+   * Golden Rule 5: Default pacing is set to 25s Gaussian delay with 5-minute coffee break every 25 messages.
    */
   async enqueueCampaign(payload: {
-    campaignName: string;
-    dispatchType?: 'MULTI_NUMBER_POOL' | 'DEDICATED_NUMBER';
+    campaignName?: string;
     senderNumber?: string;
+    dispatchType?: 'MULTI_NUMBER_POOL' | 'DEDICATED_NUMBER';
     senderPoolCount?: number;
     customMessageText: string;
-    buttons?: any[];
+    buttons?: Array<{ id?: string; type: string; text: string; value?: string }>;
     media?: {
       base64?: string;
       url?: string;
@@ -140,7 +159,8 @@ export class CampaignQueueService implements OnModuleInit {
     }
 
     const campaignId = `camp-${Date.now()}`;
-    const delaySec = Math.max(1, payload.delayIntervalSec || 5);
+    // Golden Rule 5: Default to 25s Gaussian base delay (range 18s - 65s)
+    const delaySec = Math.max(15, payload.delayIntervalSec || 25);
     const totalCost = payload.totalCostINR || payload.recipients.length * 1.0;
 
     const queuedMessages: QueuedMessage[] = payload.recipients.map((rec, idx) => ({
@@ -155,7 +175,7 @@ export class CampaignQueueService implements OnModuleInit {
     const campaign: QueuedCampaign = {
       id: campaignId,
       name: payload.campaignName || `Campaign ${new Date().toLocaleTimeString('en-IN')}`,
-      senderNumber: session.connectedNumber || '918897727709',
+      senderNumber: payload.senderNumber || session.connectedNumber || '918897727709',
       dispatchType: payload.dispatchType || 'DEDICATED_NUMBER',
       senderPoolCount: payload.senderPoolCount || 1,
       status: 'SENDING',
@@ -163,11 +183,11 @@ export class CampaignQueueService implements OnModuleInit {
       buttons: payload.buttons || [],
       media: payload.media || null,
       delayIntervalSec: delaySec,
-      minJitterSec: 1,
-      maxJitterSec: 4,
-      batchCooldownAfter: 35, // pause after every 35 messages
-      batchCooldownSec: 20, // 20s cooldown pause
-      spintaxEnabled: !!payload.spintaxEnabled,
+      minJitterSec: 18,
+      maxJitterSec: 65,
+      batchCooldownAfter: 25, // Golden Rule 5: Pause / Cooldown after every 25 messages
+      batchCooldownSec: 300, // Golden Rule 5: 5-minute coffee break (300 seconds)
+      spintaxEnabled: payload.spintaxEnabled !== false,
       totalContacts: payload.recipients.length,
       sentCount: 0,
       deliveredCount: 0,
@@ -184,7 +204,7 @@ export class CampaignQueueService implements OnModuleInit {
     this.persistToDisk();
 
     this.logger.log(
-      `🚀 Enqueued campaign "${campaign.name}" (${campaignId}) with ${campaign.totalContacts} recipients. Background worker starting...`,
+      `🚀 Enqueued campaign "${campaign.name}" (${campaignId}) with ${campaign.totalContacts} recipients. Background anti-ban worker starting...`,
     );
 
     // Trigger async worker without blocking HTTP response
@@ -196,7 +216,7 @@ export class CampaignQueueService implements OnModuleInit {
       name: campaign.name,
       totalQueued: campaign.totalContacts,
       status: campaign.status,
-      message: `Campaign enqueued successfully on server background worker. Safe to close browser.`,
+      message: `Campaign enqueued successfully with 6 Golden Rules anti-ban protection. Safe to close browser.`,
     };
   }
 
@@ -241,7 +261,7 @@ export class CampaignQueueService implements OnModuleInit {
   }
 
   /**
-   * Processes a single campaign's queued messages with humanized anti-ban pacing & cooldowns.
+   * Processes a single campaign's queued messages with Gaussian anti-ban pacing & coffee breaks.
    */
   private async processCampaign(campaign: QueuedCampaign) {
     let sentSinceLastCooldown = 0;
@@ -267,14 +287,11 @@ export class CampaignQueueService implements OnModuleInit {
         break;
       }
 
-      // Anti-Ban Throttling: Base delay + Randomized Jitter (e.g. 5s + 1-4s random = 6s-9s)
-      const baseDelay = campaign.delayIntervalSec || 5;
-      const jitter =
-        Math.floor(Math.random() * (campaign.maxJitterSec - campaign.minJitterSec + 1)) +
-        campaign.minJitterSec;
-      const totalDelayMs = (baseDelay + jitter) * 1000;
-
-      await new Promise((r) => setTimeout(r, totalDelayMs));
+      // Golden Rule 5: Randomized Gaussian Jitter (e.g. mean 25s, bounded 18s - 65s)
+      const baseMean = Math.max(18, campaign.delayIntervalSec || 25);
+      const gaussianDelaySec = getGaussianJitter(baseMean, 6, 18, 65);
+      this.logger.log(`⏳ Anti-Ban Pacing: Waiting ${gaussianDelaySec}s Gaussian delay before next message...`);
+      await new Promise((r) => setTimeout(r, gaussianDelaySec * 1000));
 
       // Re-check status after sleep
       if ((campaign.status as string) === 'PAUSED' || (campaign.status as string) === 'CANCELLED') {
@@ -284,12 +301,9 @@ export class CampaignQueueService implements OnModuleInit {
       // Parameter substitution ({{1}} -> recipient name)
       let text = campaign.customMessageText.replace(/\{\{1\}\}/g, msg.recipientName || 'Customer');
 
-      // Spintax resolution: {Hello|Hi|Greetings}
+      // Golden Rule 4: Spintax resolution {Hello|Hi|Greetings}
       if (campaign.spintaxEnabled) {
-        text = text.replace(/\{([^{}]+)\}/g, (_, choices) => {
-          const arr = choices.split('|');
-          return arr[Math.floor(Math.random() * arr.length)];
-        });
+        text = this.baileysService.resolveSpintax(text);
       }
 
       msg.status = 'SENDING';
@@ -335,13 +349,26 @@ export class CampaignQueueService implements OnModuleInit {
       // Persist after each send
       this.persistToDisk();
 
-      // Batch cooldown safeguard: pause 20s every 35 messages to protect account health
-      if (sentSinceLastCooldown >= campaign.batchCooldownAfter) {
-        this.logger.log(
-          `🛡️ Anti-ban safeguard: Pausing ${campaign.batchCooldownSec}s after ${sentSinceLastCooldown} messages...`,
-        );
-        sentSinceLastCooldown = 0;
-        await new Promise((r) => setTimeout(r, campaign.batchCooldownSec * 1000));
+      // Golden Rule 5: 25-message Cooldown / Coffee Break Safeguard
+      // Protects account health against Meta's sliding window heuristic filters
+      if (sentSinceLastCooldown >= (campaign.batchCooldownAfter || 25)) {
+        const onlineSessions = this.baileysService.getOnlineSessions();
+        if (
+          onlineSessions.length > 1 &&
+          (campaign.dispatchType === 'MULTI_NUMBER_POOL' || campaign.senderNumber === 'MULTI_NUMBER_POOL')
+        ) {
+          this.logger.log(
+            `🔄 Multi-SIM Pool: 25 messages dispatched on current slot. Rotating automatically to next online SIM in pool without stalling...`,
+          );
+          sentSinceLastCooldown = 0;
+        } else {
+          const breakSec = Math.max(60, campaign.batchCooldownSec || 300);
+          this.logger.log(
+            `☕ Anti-Ban Cooldown: Taking a ${Math.round(breakSec / 60)}-minute coffee break (${breakSec}s) after 25 messages to let WhatsApp algorithmic sliding windows cool down...`,
+          );
+          sentSinceLastCooldown = 0;
+          await new Promise((r) => setTimeout(r, breakSec * 1000));
+        }
       }
     }
 

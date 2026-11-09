@@ -77,6 +77,26 @@ export class SessionController {
   }
 
   /**
+   * Sets or clears a dedicated residential/mobile SOCKS5 or HTTP proxy for a session slot.
+   */
+  @Post('accounts/:sessionId/proxy')
+  @HttpCode(HttpStatus.OK)
+  async setSessionProxy(
+    @Param('sessionId') sessionId: string,
+    @Body() body: { proxyUrl: string | null },
+  ) {
+    return this.baileysService.setSessionProxy(sessionId, body?.proxyUrl ?? null);
+  }
+
+  /**
+   * Returns system-wide Anti-Ban 6 Golden Rules Health Status and Quota Breakdown.
+   */
+  @Get('anti-ban/health')
+  getAntiBanHealth() {
+    return this.baileysService.getAntiBanHealthReport();
+  }
+
+  /**
    * Deletes a WhatsApp account slot and removes credentials.
    */
   @Delete('accounts/:sessionId')

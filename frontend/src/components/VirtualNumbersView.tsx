@@ -23,6 +23,11 @@ import {
   Copy,
   Check,
   Trash2,
+  Globe,
+  Sliders,
+  Clock,
+  Shuffle,
+  ShieldAlert,
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -92,6 +97,44 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({
   const [isRefreshingQr, setIsRefreshingQr] = useState(false);
   const [pairingError, setPairingError] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
+
+  // Dedicated Residential / Mobile Proxy Configuration State (Golden Rule 2)
+  const [proxyModalOpen, setProxyModalOpen] = useState(false);
+  const [proxyTargetAccount, setProxyTargetAccount] = useState<ConnectedWhatsAppAccount | null>(null);
+  const [proxyInput, setProxyInput] = useState('');
+  const [isSavingProxy, setIsSavingProxy] = useState(false);
+  const [proxySaveMsg, setProxySaveMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const handleOpenProxyModal = (acc: ConnectedWhatsAppAccount) => {
+    setProxyTargetAccount(acc);
+    setProxyInput(acc.proxyUrl || '');
+    setProxySaveMsg(null);
+    setProxyModalOpen(true);
+  };
+
+  const handleSaveProxy = async () => {
+    if (!proxyTargetAccount) return;
+    try {
+      setIsSavingProxy(true);
+      setProxySaveMsg(null);
+      const res = await axios.post(`/api/v1/session/accounts/${proxyTargetAccount.sessionId}/proxy`, {
+        proxyUrl: proxyInput.trim() || null,
+      });
+      if (res.data?.success) {
+        setProxySaveMsg({ type: 'success', text: res.data.message || 'Proxy configured successfully.' });
+        await fetchAccounts();
+        setTimeout(() => {
+          setProxyModalOpen(false);
+        }, 1200);
+      } else {
+        setProxySaveMsg({ type: 'error', text: res.data?.message || 'Failed to update proxy.' });
+      }
+    } catch (err: any) {
+      setProxySaveMsg({ type: 'error', text: err.response?.data?.message || err.message });
+    } finally {
+      setIsSavingProxy(false);
+    }
+  };
 
   // Fetch all accounts from backend
   const fetchAccounts = async () => {
@@ -321,43 +364,244 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({
           </button>
         </div>
 
+        {/* 🛡️ Core Anti-Ban Architecture (The 6 Golden Rules Active) Banner */}
+        <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-950 p-5 rounded-2xl border border-emerald-500/30 text-white shadow-xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-white/10 pb-4 mb-4">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="p-2 rounded-xl bg-emerald-500/20 border border-emerald-400/30 text-emerald-300">
+                  <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                </span>
+                <h3 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+                  Core Anti-Ban Architecture
+                  <span className="text-[11px] bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 px-2.5 py-0.5 rounded-full font-mono font-semibold">
+                    The 6 Golden Rules Active
+                  </span>
+                </h3>
+              </div>
+              <p className="text-xs text-slate-300 mt-1 max-w-3xl">
+                Commercial anti-ban engine: multi-SIM horizontal rotation, dedicated residential SOCKS5 proxies, typing presence simulation, zero-width cryptographic hash entropy, Gaussian jitter, and warmup limits.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="bg-white/5 border border-white/10 px-3.5 py-2 rounded-xl text-center">
+                <div className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">Multi-SIM Pool</div>
+                <div className="text-base font-bold text-emerald-400">
+                  {accounts.filter((a) => a.isOnline).length} / {accounts.length} Online
+                </div>
+              </div>
+              <div className="bg-white/5 border border-white/10 px-3.5 py-2 rounded-xl text-center">
+                <div className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">Pool Safe Quota</div>
+                <div className="text-base font-bold text-amber-300">
+                  {accounts.reduce((acc, a) => acc + (a.dailySentCount || 0), 0)} / {accounts.reduce((acc, a) => acc + (a.maxDailySafeCap || 25), 0)} Sent
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 6 Rules Status Cards Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+            {/* Rule 1 */}
+            <div className="bg-white/5 border border-white/10 rounded-xl p-3 hover:bg-white/10 transition">
+              <div className="flex items-center justify-between text-emerald-300 font-bold mb-1">
+                <span className="flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-emerald-400" />
+                  1. Multi-Session Pool
+                </span>
+                <span className="text-[10px] bg-emerald-400/20 text-emerald-300 px-1.5 py-0.5 rounded">Active</span>
+              </div>
+              <p className="text-[11px] text-slate-300">
+                Rotates outbound traffic across linked numbers (100 msgs/day safe limit) to prevent single-number blasting.
+              </p>
+            </div>
+
+            {/* Rule 2 */}
+            <div className="bg-white/5 border border-white/10 rounded-xl p-3 hover:bg-white/10 transition">
+              <div className="flex items-center justify-between text-teal-300 font-bold mb-1">
+                <span className="flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-teal-400" />
+                  2. Residential Proxies
+                </span>
+                <span className="text-[10px] bg-teal-400/20 text-teal-300 px-1.5 py-0.5 rounded">
+                  {accounts.filter((a) => !!a.proxyUrl).length > 0 ? `${accounts.filter((a) => !!a.proxyUrl).length} Bound` : 'Configurable'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-300">
+                Binds each Baileys socket to a dedicated SOCKS5/HTTP proxy to shield against Meta datacenter cluster bans.
+              </p>
+            </div>
+
+            {/* Rule 3 */}
+            <div className="bg-white/5 border border-white/10 rounded-xl p-3 hover:bg-white/10 transition">
+              <div className="flex items-center justify-between text-cyan-300 font-bold mb-1">
+                <span className="flex items-center gap-1.5">
+                  <Activity className="w-3.5 h-3.5 text-cyan-400" />
+                  3. Presence Simulation
+                </span>
+                <span className="text-[10px] bg-cyan-400/20 text-cyan-300 px-1.5 py-0.5 rounded">Active</span>
+              </div>
+              <p className="text-[11px] text-slate-300">
+                Pre-flight onWhatsApp verification, composing typing presence packet, 3-6s humanized delay, and paused teardown.
+              </p>
+            </div>
+
+            {/* Rule 4 */}
+            <div className="bg-white/5 border border-white/10 rounded-xl p-3 hover:bg-white/10 transition">
+              <div className="flex items-center justify-between text-indigo-300 font-bold mb-1">
+                <span className="flex items-center gap-1.5">
+                  <Shuffle className="w-3.5 h-3.5 text-indigo-400" />
+                  4. Zero-Width Hash Entropy
+                </span>
+                <span className="text-[10px] bg-indigo-400/20 text-indigo-300 px-1.5 py-0.5 rounded">Active</span>
+              </div>
+              <p className="text-[11px] text-slate-300">
+                Dynamic Spintax + 4-8 invisible zero-width chars (\u200B) creating a cryptographically unique SHA-256 hash per payload.
+              </p>
+            </div>
+
+            {/* Rule 5 */}
+            <div className="bg-white/5 border border-white/10 rounded-xl p-3 hover:bg-white/10 transition">
+              <div className="flex items-center justify-between text-amber-300 font-bold mb-1">
+                <span className="flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-amber-400" />
+                  5. Gaussian Jitter & Breaks
+                </span>
+                <span className="text-[10px] bg-amber-400/20 text-amber-300 px-1.5 py-0.5 rounded">Active</span>
+              </div>
+              <p className="text-[11px] text-slate-300">
+                Box-Muller normal distribution delays (18s-65s) + automatic pool rotation or 5-minute coffee break every 25 messages.
+              </p>
+            </div>
+
+            {/* Rule 6 */}
+            <div className="bg-white/5 border border-white/10 rounded-xl p-3 hover:bg-white/10 transition">
+              <div className="flex items-center justify-between text-rose-300 font-bold mb-1">
+                <span className="flex items-center gap-1.5">
+                  <Flame className="w-3.5 h-3.5 text-rose-400" />
+                  6. Warmup & SIM Sourcing
+                </span>
+                <span className="text-[10px] bg-rose-400/20 text-rose-300 px-1.5 py-0.5 rounded">Enforced</span>
+              </div>
+              <p className="text-[11px] text-slate-300">
+                Automated 3-tier safe caps (25/50/100/day). Guidance: avoid free VoIP; use Non-VoIP SIMs (SMS-Activate, 5sim).
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Multi-Account Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {accounts.map((acc, idx) => (
             <div
               key={acc.sessionId}
-              className={`p-4 rounded-xl border transition-all ${
+              className={`p-4 rounded-xl border transition-all flex flex-col justify-between ${
                 acc.isOnline
                   ? 'bg-emerald-50/60 border-emerald-300 shadow-2xs'
                   : 'bg-slate-50 border-slate-200'
               }`}
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div
-                    className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs ${
-                      acc.isOnline ? 'bg-[#25D366] text-white shadow-xs' : 'bg-slate-300 text-slate-700'
+              <div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs ${
+                        acc.isOnline ? 'bg-[#25D366] text-white shadow-xs' : 'bg-slate-300 text-slate-700'
+                      }`}
+                    >
+                      #{idx + 1}
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-900">{acc.label}</h4>
+                      <span className="text-xs font-mono font-semibold text-slate-600">
+                        {acc.connectedNumber ? `+${acc.connectedNumber}` : 'Unpaired Channel'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      acc.isOnline
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                        : 'bg-amber-100 text-amber-800 border border-amber-300'
                     }`}
                   >
-                    #{idx + 1}
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-slate-900">{acc.label}</h4>
-                    <span className="text-xs font-mono font-semibold text-slate-600">
-                      {acc.connectedNumber ? `+${acc.connectedNumber}` : 'Unpaired Channel'}
-                    </span>
-                  </div>
+                    {acc.isOnline ? '● ONLINE' : '● UNPAIRED'}
+                  </span>
                 </div>
 
-                <span
-                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    acc.isOnline
-                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                      : 'bg-amber-100 text-amber-800 border border-amber-300'
-                  }`}
-                >
-                  {acc.isOnline ? '● ONLINE' : '● UNPAIRED'}
-                </span>
+                {/* Warmup Stage Badge & Daily Safe Progress */}
+                <div className="mt-3 pt-3 border-t border-slate-200/60 space-y-2">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-500 font-medium flex items-center gap-1">
+                      <Flame className="w-3 h-3 text-amber-500" />
+                      Warmup Stage:
+                    </span>
+                    <span
+                      className={`font-bold px-2 py-0.5 rounded-full text-[10px] ${
+                        acc.warmupStage === 'WARMED_UP'
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                          : acc.warmupStage === 'MATURING'
+                          ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                          : 'bg-orange-100 text-orange-800 border border-orange-300'
+                      }`}
+                    >
+                      {acc.warmupStage === 'WARMED_UP'
+                        ? '🟢 Warmed Up (100/day)'
+                        : acc.warmupStage === 'MATURING'
+                        ? '🟡 Maturing (50/day)'
+                        : '🟠 Warming Up (25/day)'}
+                    </span>
+                  </div>
+
+                  {/* Progress Bar for Daily Safe Cap */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[10px] text-slate-500">
+                      <span>Daily Safe Quota:</span>
+                      <span className="font-semibold text-slate-700">
+                        {acc.dailySentCount || 0} / {acc.maxDailySafeCap || 25} sent today
+                      </span>
+                    </div>
+                    <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          (acc.dailySentCount || 0) >= (acc.maxDailySafeCap || 25)
+                            ? 'bg-rose-500'
+                            : (acc.dailySentCount || 0) >= (acc.maxDailySafeCap || 25) * 0.8
+                            ? 'bg-amber-500'
+                            : 'bg-emerald-500'
+                        }`}
+                        style={{
+                          width: `${Math.min(100, Math.round(((acc.dailySentCount || 0) / (acc.maxDailySafeCap || 25)) * 100))}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Proxy Status & Edit Button */}
+                  <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
+                    <span className="text-slate-500 flex items-center gap-1 truncate max-w-[170px]" title={acc.proxyUrl || 'Direct IP'}>
+                      <Globe className="w-3 h-3 text-slate-400 shrink-0" />
+                      {acc.proxyUrl ? (
+                        <span className="text-teal-700 font-semibold truncate">
+                          {acc.proxyUrl.replace(/:[^:]+@/, ':****@')}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">Direct IP (No Proxy)</span>
+                      )}
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() => handleOpenProxyModal(acc)}
+                      className="text-xs text-teal-700 hover:text-teal-900 font-semibold flex items-center gap-1 hover:underline"
+                    >
+                      <Sliders className="w-3 h-3" />
+                      {acc.proxyUrl ? 'Edit' : '+ Proxy'}
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <div className="mt-4 pt-3 border-t border-slate-200/60 flex items-center justify-between text-xs">
@@ -1096,6 +1340,98 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({
             >
               Close
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Golden Rule 2: Dedicated SOCKS5 / HTTP Proxy Configuration Modal */}
+      {proxyModalOpen && proxyTargetAccount && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-teal-50 border border-teal-200 text-teal-700">
+                  <Globe className="w-5 h-5 text-teal-600" />
+                </span>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Configure Dedicated Proxy</h3>
+                  <p className="text-xs text-slate-500">
+                    Slot: {proxyTargetAccount.label} ({proxyTargetAccount.connectedNumber ? `+${proxyTargetAccount.connectedNumber}` : 'Unpaired'})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setProxyModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="p-3 bg-teal-50/70 border border-teal-200 rounded-xl space-y-1 text-teal-900">
+                <div className="font-bold flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-teal-700" />
+                  Golden Rule 2: Cluster Ban Prevention
+                </div>
+                <p className="text-[11px] text-teal-800">
+                  Binding each WhatsApp socket to a residential or mobile proxy ensures Meta's network scanners cannot link and ban your number cluster based on shared datacenter IP addresses.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">
+                  Proxy URI (SOCKS5 / HTTP / HTTPS)
+                </label>
+                <input
+                  type="text"
+                  value={proxyInput}
+                  onChange={(e) => setProxyInput(e.target.value)}
+                  placeholder="e.g. socks5://user:pass@127.0.0.1:1080 or http://host:port"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-xs focus:ring-2 focus:ring-teal-500 outline-none"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Leave empty and click Save to remove proxy and revert to direct server IP.
+                </p>
+              </div>
+
+              {proxySaveMsg && (
+                <div
+                  className={`p-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 ${
+                    proxySaveMsg.type === 'success'
+                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                      : 'bg-rose-50 text-rose-800 border border-rose-200'
+                  }`}
+                >
+                  {proxySaveMsg.type === 'success' ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  )}
+                  <span>{proxySaveMsg.text}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setProxyModalOpen(false)}
+                className="px-4 py-2 border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold rounded-xl"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveProxy}
+                disabled={isSavingProxy}
+                className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-xl shadow-xs flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {isSavingProxy && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                Save Proxy & Reconnect Socket
+              </button>
+            </div>
           </div>
         </div>
       )}

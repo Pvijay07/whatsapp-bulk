@@ -229,8 +229,8 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
     ]);
   };
 
-  // Anti-Ban & Humanized Controls
-  const [delayIntervalSec, setDelayIntervalSec] = useState(3);
+  // Anti-Ban & Humanized Controls (6 Golden Rules)
+  const [delayIntervalSec, setDelayIntervalSec] = useState(25);
   const [spintaxEnabled, setSpintaxEnabled] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [spintaxVariantSeed, setSpintaxVariantSeed] = useState(0);
@@ -734,15 +734,15 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
               )}
             </div>
 
-            {/* Anti-Ban Safeguards: Spintax & Sleep Delay Slider */}
-            <div className="p-3 bg-amber-50/60 border border-amber-200/80 rounded-xl space-y-2.5">
+            {/* Anti-Ban Safeguards: 6 Golden Rules Throttling & Gaussian Jitter */}
+            <div className="p-3 bg-amber-50/70 border border-amber-200/90 rounded-xl space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-amber-600" />
-                  Anti-Ban Delivery Throttling
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  Anti-Ban Engine (6 Golden Rules Active)
                 </span>
-                <span className="text-[10px] text-amber-700 bg-amber-100 px-2 py-0.5 rounded font-semibold">
-                  Multi-Session Protection
+                <span className="text-[10px] text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full font-semibold border border-emerald-300">
+                  Gaussian Jitter Active
                 </span>
               </div>
 
@@ -750,7 +750,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
               <div className="flex items-center justify-between text-xs text-slate-700">
                 <div className="flex items-center gap-1.5">
                   <Shuffle className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Randomize Spintax variations</span>
+                  <span>Randomize Spintax variations + Zero-Width SHA-256 entropy</span>
                 </div>
                 <input
                   type="checkbox"
@@ -765,18 +765,38 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
                 <div className="flex justify-between text-xs text-slate-700 mb-1">
                   <span className="flex items-center gap-1.5">
                     <Clock className="w-3.5 h-3.5 text-slate-500" />
-                    Humanized Sleep Interval:
+                    Gaussian Sleep Interval:
                   </span>
-                  <span className="font-bold text-[#075E54]">{delayIntervalSec} - {delayIntervalSec + 3} seconds</span>
+                  <span className="font-bold text-[#075E54]">
+                    ~{delayIntervalSec}s (± 6s Gaussian Jitter, safe bounded)
+                  </span>
                 </div>
                 <input
                   type="range"
-                  min="1"
-                  max="10"
+                  min="15"
+                  max="60"
+                  step="5"
                   value={delayIntervalSec}
                   onChange={(e) => setDelayIntervalSec(parseInt(e.target.value, 10))}
                   className="w-full accent-[#128C7E]"
                 />
+                <div className="flex justify-between text-[10px] text-slate-400 mt-0.5">
+                  <span>15s (Aggressive)</span>
+                  <span className="text-emerald-700 font-medium">25s - 35s (Recommended Safe)</span>
+                  <span>60s (Ultra-Safe)</span>
+                </div>
+              </div>
+
+              {/* Golden Rules Pills */}
+              <div className="grid grid-cols-2 gap-1.5 pt-1 text-[10px]">
+                <div className="bg-white/80 border border-slate-200 rounded px-2 py-1 text-slate-600 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  <span>Presence: 3-6s typing simulation</span>
+                </div>
+                <div className="bg-white/80 border border-slate-200 rounded px-2 py-1 text-slate-600 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  <span>Cooldown: 5m break / 25 msgs</span>
+                </div>
               </div>
             </div>
 
