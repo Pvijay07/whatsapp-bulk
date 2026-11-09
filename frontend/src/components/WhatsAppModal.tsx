@@ -649,6 +649,54 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
               )}
             </div>
 
+            {/* Prompt for a Reply First (Cold Outreach Conversational Hook) */}
+            <div className="p-3 bg-emerald-50/70 border border-emerald-200/90 rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                  <MessageSquare className="w-4 h-4 text-emerald-600" />
+                  Prompt for a Reply First (Cold Outreach Hook)
+                </span>
+                <span className="text-[10px] text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full font-semibold border border-emerald-300">
+                  Risk Reduction: Near Zero
+                </span>
+              </div>
+              <p className="text-[11px] text-emerald-900 leading-snug">
+                When a recipient replies even 1 word to your virtual number, WhatsApp marks the thread as a <b>mutual conversation</b>, dropping the spam-ban probability for future messages to near zero.
+              </p>
+              <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMessageText('Hi {{1}}, is this still your active WhatsApp number for order updates? Reply YES to confirm.');
+                    setDelayIntervalSec(45);
+                  }}
+                  className="px-2.5 py-1 bg-white hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-lg text-[11px] font-medium transition active:scale-95 shadow-2xs"
+                >
+                  💬 Order Verification Hook
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMessageText('Hello {{1}}! We prepared an exclusive catalog for you. Should I send the PDF brochure here? Reply 1 for Yes.');
+                    setDelayIntervalSec(45);
+                  }}
+                  className="px-2.5 py-1 bg-white hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-lg text-[11px] font-medium transition active:scale-95 shadow-2xs"
+                >
+                  📦 Catalog Request Hook
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMessageText('Hey {{1}}! Your 25% discount voucher is waiting. Reply CLAIM to activate your coupon code.');
+                    setDelayIntervalSec(45);
+                  }}
+                  className="px-2.5 py-1 bg-white hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-lg text-[11px] font-medium transition active:scale-95 shadow-2xs"
+                >
+                  🎁 Offer Activation Hook
+                </button>
+              </div>
+            </div>
+
             {/* Direct Message Composer (Free text + Spintax) */}
             <div>
               <div className="flex items-center justify-between mb-1">

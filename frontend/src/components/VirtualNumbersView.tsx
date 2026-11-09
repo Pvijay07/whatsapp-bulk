@@ -732,25 +732,45 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({
         </div>
       </div>
 
-      {/* Account Warmer Console */}
+      {/* Account Warmer Console (Day 1–2 Internal Mutual Chatting Engine) */}
       <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
           <div className="flex items-center space-x-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 text-white flex items-center justify-center shadow-xs">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 text-white flex items-center justify-center shadow-xs">
               <Flame className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-bold text-slate-900">
-                  Automated Account Warmer (Anti-Ban Engine)
+                  Virtual Number "Warm-Up" Protocol Engine
                 </h3>
-                <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-600" />
-                  {numbers.length >= 2 ? 'ACTIVE (Cycling Multi-Number)' : 'STANDBY (Needs 2+ Numbers)'}
+                <span
+                  className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1.5 ${
+                    accounts.filter((a) => a.isOnline).length >= 2
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                      : accounts.filter((a) => a.isOnline).length === 1
+                      ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                      : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      accounts.filter((a) => a.isOnline).length >= 2
+                        ? 'bg-emerald-600 animate-pulse'
+                        : accounts.filter((a) => a.isOnline).length === 1
+                        ? 'bg-amber-600'
+                        : 'bg-slate-400'
+                    }`}
+                  />
+                  {accounts.filter((a) => a.isOnline).length >= 2
+                    ? `ACTIVE: Peer-to-Peer Baileys (${accounts.filter((a) => a.isOnline).length} SIMs Online)`
+                    : accounts.filter((a) => a.isOnline).length === 1
+                    ? 'STANDBY: 1 SIM Online (Link SIM #2 for live peer chats)'
+                    : 'STANDBY (Awaiting linked SIMs)'}
                 </span>
               </div>
-              <p className="text-xs text-slate-500">
-                Simulates natural human conversational exchanges between pool numbers to accumulate incoming message volume and eliminate ban risks.
+              <p className="text-xs text-slate-500 mt-0.5">
+                Internal mutual chatting engine: pool virtual numbers send random messages and replies to each other. Because both sides reply and neither clicks "Report", WhatsApp's trust score rises rapidly.
               </p>
             </div>
           </div>
@@ -758,45 +778,136 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({
           <button
             type="button"
             onClick={handleTriggerWarmup}
-            disabled={isWarmingActive || numbers.length < 2}
-            className="px-3.5 py-1.5 border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-xl text-xs font-bold transition flex items-center gap-1.5 active:scale-95 disabled:opacity-40"
+            disabled={isWarmingActive}
+            className="px-4 py-2 border border-amber-300 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 active:scale-95 shadow-sm shadow-amber-600/20 disabled:opacity-40"
           >
-            <RefreshCw className={`w-3.5 h-3.5 text-amber-700 ${isWarmingActive ? 'animate-spin' : ''}`} />
-            Trigger Warmup Round
+            <RefreshCw className={`w-3.5 h-3.5 text-white ${isWarmingActive ? 'animate-spin' : ''}`} />
+            Trigger Mutual Warmup Round
           </button>
         </div>
 
-        {/* Live Warmup Conversation Feed */}
-        <div className="space-y-2">
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Warmup Activity Logs
+        {/* 4-Stage Warmup Protocol Timeline Table */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+          {/* Day 1-2 */}
+          <div className="p-3 bg-amber-50/70 border border-amber-200/90 rounded-xl space-y-1.5">
+            <div className="flex items-center justify-between text-amber-900 font-bold">
+              <span className="flex items-center gap-1.5">
+                <Flame className="w-3.5 h-3.5 text-amber-600" />
+                Day 1–2: Mutual Chatting
+              </span>
+              <span className="text-[10px] bg-amber-200/80 text-amber-900 px-1.5 py-0.2 rounded font-semibold">
+                Internal
+              </span>
+            </div>
+            <p className="text-[11px] text-amber-900 leading-snug">
+              Auto-Warmer loop sends peer chats & replies between pool SIMs. <b>Limit cold to 0–10/day</b>.
+            </p>
+            <div className="text-[10px] font-semibold text-emerald-800 bg-emerald-100/70 px-2 py-0.5 rounded">
+              ✓ Both reply, 0% reports → Rapid trust gain
+            </div>
           </div>
+
+          {/* Day 3-5 */}
+          <div className="p-3 bg-blue-50/70 border border-blue-200/90 rounded-xl space-y-1.5">
+            <div className="flex items-center justify-between text-blue-900 font-bold">
+              <span className="flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-blue-600" />
+                Day 3–5: Low-Volume
+              </span>
+              <span className="text-[10px] bg-blue-200/80 text-blue-900 px-1.5 py-0.2 rounded font-semibold">
+                15–25/day
+              </span>
+            </div>
+            <p className="text-[11px] text-blue-900 leading-snug">
+              Limit each number to <b>15–25 msgs/day</b> with <b>45–90s delays</b>.
+            </p>
+            <div className="text-[10px] font-semibold text-blue-800 bg-blue-100/70 px-2 py-0.5 rounded">
+              ✓ Prompt for a reply first (hook)
+            </div>
+          </div>
+
+          {/* Day 6-7 */}
+          <div className="p-3 bg-indigo-50/70 border border-indigo-200/90 rounded-xl space-y-1.5">
+            <div className="flex items-center justify-between text-indigo-900 font-bold">
+              <span className="flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5 text-indigo-600" />
+                Day 6–7: Maturing Volume
+              </span>
+              <span className="text-[10px] bg-indigo-200/80 text-indigo-900 px-1.5 py-0.2 rounded font-semibold">
+                40–60/day
+              </span>
+            </div>
+            <p className="text-[11px] text-indigo-900 leading-snug">
+              Expand volume to <b>40–60 msgs/day</b> with <b>30–60s delays</b> across pool.
+            </p>
+            <div className="text-[10px] font-semibold text-indigo-800 bg-indigo-100/70 px-2 py-0.5 rounded">
+              ✓ Multi-SIM round-robin rotation
+            </div>
+          </div>
+
+          {/* Day 7+ */}
+          <div className="p-3 bg-emerald-50/70 border border-emerald-200/90 rounded-xl space-y-1.5">
+            <div className="flex items-center justify-between text-emerald-950 font-bold">
+              <span className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                Day 7+: Scaled Rotation
+              </span>
+              <span className="text-[10px] bg-emerald-200/80 text-emerald-900 px-1.5 py-0.2 rounded font-semibold">
+                80–120/day
+              </span>
+            </div>
+            <p className="text-[11px] text-emerald-900 leading-snug">
+              Cap at <b>80–120 msgs/day</b> per SIM. <b>10 SIMs = 1,000+ msgs/day</b> safely!
+            </p>
+            <div className="text-[10px] font-semibold text-emerald-800 bg-emerald-100/70 px-2 py-0.5 rounded">
+              ✓ Enterprise throughput with zero bans
+            </div>
+          </div>
+        </div>
+
+        {/* Live Warmup Conversation Feed */}
+        <div className="space-y-2 pt-2 border-t border-slate-100">
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              Live Mutual Peer Chatting Logs ({warmupLogs.length})
+            </div>
+            <span className="text-[11px] text-slate-400">
+              Encrypted Baileys WebSocket Exchanges
+            </span>
+          </div>
+
           {warmupLogs.length === 0 ? (
             <div className="p-6 bg-slate-50 rounded-xl text-center text-xs text-slate-400">
-              No warmup exchanges recorded yet. When you have two or more numbers in your pool, the warmer will cycle automated peer dialogues.
+              No warmup exchanges recorded yet. Click "Trigger Mutual Warmup Round" to cycle automated peer dialogues between your pool numbers.
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {warmupLogs.slice(0, 3).map((log) => (
+              {warmupLogs.slice(0, 6).map((log) => (
                 <div
                   key={log.id}
-                  className="p-3 bg-slate-50 border border-slate-200/60 rounded-xl text-xs space-y-2 hover:border-slate-300 transition"
+                  className="p-3 bg-slate-50 border border-slate-200/70 rounded-xl text-xs space-y-2 hover:border-emerald-300 transition"
                 >
                   <div className="flex items-center justify-between text-[11px] text-slate-500">
-                    <span className="font-mono text-slate-700 font-semibold">{log.fromNumber}</span>
-                    <ArrowRight className="w-3 h-3 text-slate-400" />
-                    <span className="font-mono text-slate-700 font-semibold">{log.toNumber}</span>
-                    <span className="text-[10px] text-slate-400">{log.timestamp}</span>
+                    <span className="font-mono text-slate-700 font-semibold truncate max-w-[120px]" title={log.fromNumber}>
+                      {log.fromNumber}
+                    </span>
+                    <ArrowRight className="w-3 h-3 text-slate-400 shrink-0" />
+                    <span className="font-mono text-slate-700 font-semibold truncate max-w-[120px]" title={log.toNumber}>
+                      {log.toNumber}
+                    </span>
+                    <span className="text-[10px] text-slate-400 shrink-0">{log.timestamp}</span>
                   </div>
-                  <div className="text-slate-800 italic bg-white p-2 rounded-lg border border-slate-200/50">
+                  <div className="text-slate-800 italic bg-white p-2 rounded-lg border border-slate-200/60 text-[11px]">
                     "{log.snippet}"
                   </div>
                   <div className="flex items-center justify-between text-[10px]">
                     <span className="text-emerald-700 font-semibold flex items-center gap-1">
                       <CheckCircle2 className="w-3 h-3" />
-                      +1% Trust Health
+                      {log.trustGain || '+2.5% Mutual Trust'}
                     </span>
-                    <span className="text-slate-400">Noise Encrypted</span>
+                    <span className="text-slate-400 uppercase text-[9px] font-mono">
+                      {log.type === 'REAL_PEER_EXCHANGE' ? '● Real WebSocket' : 'Peer Ready'}
+                    </span>
                   </div>
                 </div>
               ))}

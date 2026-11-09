@@ -34,6 +34,9 @@ export interface WhatsAppAccountInfo {
   maxDailySafeCap: number;
   warmupStage: WarmupStage;
   daysActive: number;
+  recommendedDelaySec?: number;
+  stageName?: string;
+  stageDescription?: string;
 }
 
 interface SessionData {
@@ -65,28 +68,53 @@ export function calculateWarmupMetrics(createdAtStr: string): {
   daysActive: number;
   warmupStage: WarmupStage;
   maxDailySafeCap: number;
+  recommendedDelaySec: number;
+  stageName: string;
+  stageDescription: string;
 } {
   const createdTime = new Date(createdAtStr || Date.now()).getTime();
   const diffDays = Math.max(0, Math.floor((Date.now() - createdTime) / (1000 * 60 * 60 * 24)));
   const daysActive = diffDays + 1; // 1st day = 1
 
   if (daysActive <= 2) {
+    // Day 1–2: Internal Mutual Chatting & Auto-Warmer loop
     return {
       daysActive,
       warmupStage: 'WARMING_UP',
+      maxDailySafeCap: 10,
+      recommendedDelaySec: 75,
+      stageName: 'Day 1–2: Peer-to-Peer Warmup',
+      stageDescription: 'Internal mutual chatting between pool numbers. Safe outbound cold limit: 10/day.',
+    };
+  } else if (daysActive <= 5) {
+    // Day 3–5: Low-Volume Outbound (15–25 msgs/day, 45–90s delays)
+    return {
+      daysActive,
+      warmupStage: 'MATURING',
       maxDailySafeCap: 25,
+      recommendedDelaySec: 60,
+      stageName: 'Day 3–5: Low-Volume Outbound',
+      stageDescription: 'Limit to 15–25 msgs/day with 45–90s delays. Always prompt for a reply first.',
     };
   } else if (daysActive <= 7) {
+    // Day 6–7: Maturing Transition (40–60 msgs/day, 30–60s delays)
     return {
       daysActive,
       warmupStage: 'MATURING',
       maxDailySafeCap: 50,
+      recommendedDelaySec: 40,
+      stageName: 'Day 6–7: Maturing Volume',
+      stageDescription: '40–50 msgs/day with 30–60s delays across rotated pool.',
     };
   } else {
+    // Day 7+: Scaled Rotation (80–120 msgs/day per SIM, 1,000+ msgs/day across 10 SIMs)
     return {
       daysActive,
       warmupStage: 'WARMED_UP',
       maxDailySafeCap: 100,
+      recommendedDelaySec: 28,
+      stageName: 'Day 7+: Scaled Rotation',
+      stageDescription: 'Full velocity: 80–120 msgs/day per SIM. 10 SIMs = 1,000+ msgs/day safely.',
     };
   }
 }
@@ -106,8 +134,42 @@ export class BaileysSessionService implements OnModuleInit {
     }
   >();
 
+  // Tracks verified 2-way inbound replies (Golden Rule: Prompt for a Reply First)
+  private mutualReplies = new Map<
+    string,
+    {
+      phoneNumber: string;
+      replyText: string;
+      receivedOnChannel: string;
+      timestamp: number;
+      timeFormatted: string;
+    }
+  >();
+
   getMessageStatuses() {
     return this.messageStatuses;
+  }
+
+  getMutualReplies() {
+    return Array.from(this.mutualReplies.values());
+  }
+
+  hasMutualReply(phoneNumber: string): boolean {
+    const clean = (phoneNumber || '').replace(/[^\d]/g, '');
+    return this.mutualReplies.has(clean);
+  }
+
+  recordMutualReply(phoneNumber: string, text: string, receivedOnChannel: string) {
+    const clean = (phoneNumber || '').replace(/[^\d]/g, '');
+    const entry = {
+      phoneNumber: clean,
+      replyText: text,
+      receivedOnChannel,
+      timestamp: Date.now(),
+      timeFormatted: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+    };
+    this.mutualReplies.set(clean, entry);
+    this.logger.log(`🤝 Mutual Trust Established for +${clean} on [${receivedOnChannel}]: "${text}"`);
   }
 
   private getTodayDateString(): string {
@@ -443,6 +505,26 @@ export class BaileysSessionService implements OnModuleInit {
           }
         }
       });
+
+      // Listen for inbound messages from real recipients (Golden Rule: Prompt for a Reply First)
+      session.sock.ev.on('messages.upsert', async ({ messages, type }) => {
+        for (const msg of messages) {
+          if (!msg.key.fromMe && msg.message) {
+            const remoteJid = msg.key.remoteJid || '';
+            const cleanPhone = remoteJid.split('@')[0]?.replace(/[^\d]/g, '');
+            const text =
+              msg.message.conversation ||
+              msg.message.extendedTextMessage?.text ||
+              msg.message.imageMessage?.caption ||
+              '';
+
+            if (cleanPhone && text) {
+              this.logger.log(`💬 Inbound mutual reply received on [${session.label}] from +${cleanPhone}: "${text}"`);
+              this.recordMutualReply(cleanPhone, text, session.connectedPhoneNumber || session.label);
+            }
+          }
+        }
+      });
     } catch (err: any) {
       this.logger.error(`Error initializing Baileys socket for ${sessionId}: ${err.message}`, err.stack);
       session.sessionState = 'DISCONNECTED';
@@ -473,6 +555,7 @@ export class BaileysSessionService implements OnModuleInit {
         session.sock.ev.removeAllListeners('connection.update');
         session.sock.ev.removeAllListeners('creds.update');
         session.sock.ev.removeAllListeners('messages.update');
+        session.sock.ev.removeAllListeners('messages.upsert');
         session.sock.end(undefined);
       } catch (e) {}
       session.sock = null;
@@ -510,6 +593,9 @@ export class BaileysSessionService implements OnModuleInit {
         maxDailySafeCap: warmup.maxDailySafeCap,
         warmupStage: warmup.warmupStage,
         daysActive: warmup.daysActive,
+        recommendedDelaySec: warmup.recommendedDelaySec,
+        stageName: warmup.stageName,
+        stageDescription: warmup.stageDescription,
       });
     }
     return list;
@@ -579,6 +665,9 @@ export class BaileysSessionService implements OnModuleInit {
       maxDailySafeCap: warmup.maxDailySafeCap,
       warmupStage: warmup.warmupStage,
       daysActive: warmup.daysActive,
+      recommendedDelaySec: warmup.recommendedDelaySec,
+      stageName: warmup.stageName,
+      stageDescription: warmup.stageDescription,
     };
   }
 
@@ -709,6 +798,9 @@ export class BaileysSessionService implements OnModuleInit {
       maxDailySafeCap: warmup.maxDailySafeCap,
       warmupStage: warmup.warmupStage,
       daysActive: warmup.daysActive,
+      recommendedDelaySec: warmup.recommendedDelaySec,
+      stageName: warmup.stageName,
+      stageDescription: warmup.stageDescription,
     };
   }
 

@@ -124,6 +124,15 @@ export class SessionController {
   }
 
   /**
+   * Retrieves all verified 2-way inbound replies (Prompt for a Reply First).
+   * Proves mutual trust and zero-ban risk.
+   */
+  @Get('mutual-replies')
+  getMutualReplies() {
+    return this.baileysService.getMutualReplies();
+  }
+
+  /**
    * Checks whether a phone number is registered on WhatsApp.
    */
   @Post('check-number')

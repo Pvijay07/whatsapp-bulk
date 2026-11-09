@@ -24,9 +24,20 @@ export class VirtualPoolController {
 
   @Post('warmup/trigger')
   @HttpCode(HttpStatus.OK)
-  triggerWarmup() {
-    const entry = this.warmerService.runWarmupCycle();
+  async triggerWarmup() {
+    const entry = await this.warmerService.runWarmupCycle();
     return { success: true, entry };
+  }
+
+  @Get('warmup/status')
+  getWarmupStatus() {
+    return this.warmerService.getWarmerStatus();
+  }
+
+  @Post('warmup/toggle')
+  @HttpCode(HttpStatus.OK)
+  toggleWarmup(@Body() body: { enabled: boolean }) {
+    return this.warmerService.toggleAutoWarming(body.enabled);
   }
 
   @Get('warmup/logs')

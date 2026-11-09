@@ -58,6 +58,19 @@ export interface ConnectedWhatsAppAccount {
   maxDailySafeCap?: number;
   warmupStage?: 'WARMING_UP' | 'MATURING' | 'WARMED_UP';
   daysActive?: number;
+  recommendedDelaySec?: number;
+  stageName?: string;
+  stageDescription?: string;
+}
+
+export interface WarmupLogEntry {
+  id: string;
+  fromNumber: string;
+  toNumber: string;
+  snippet: string;
+  timestamp: string;
+  type?: 'REAL_PEER_EXCHANGE' | 'SIMULATED' | 'READINESS_CHECK';
+  trustGain?: string;
 }
 
 export interface AntiBanRuleInfo {
@@ -142,13 +155,5 @@ export interface WalletData {
   reservedINR: string;
   availableINR: string;
   transactions: WalletTransaction[];
-}
-
-export interface WarmupLogEntry {
-  id: string;
-  fromNumber: string;
-  toNumber: string;
-  snippet: string;
-  timestamp: string;
 }
 

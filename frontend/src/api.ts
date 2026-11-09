@@ -349,6 +349,26 @@ export class DynamicStoreManager {
     return { success: true, entry: newEntry };
   }
 
+  // Get Auto-Warmer engine status & protocol details
+  async getWarmupStatus(): Promise<any> {
+    try {
+      const res = await apiClient.get('/virtual-pool/warmup/status');
+      return res.data;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Get Mutual Replies list (Prompt for a Reply First)
+  async getMutualReplies(): Promise<any[]> {
+    try {
+      const res = await apiClient.get('/session/mutual-replies');
+      return Array.isArray(res.data) ? res.data : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
   // Transmit REAL WhatsApp message directly via backend Baileys WebSocket (no simulation)
   async sendRealMessage(
     recipientPhoneNumber: string,
