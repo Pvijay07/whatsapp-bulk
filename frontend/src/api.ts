@@ -74,32 +74,35 @@ export class DynamicStoreManager {
     }
   }
 
-  // Load Contacts
+  // Load Contacts directly from Backend (PostgreSQL)
   async getContacts(): Promise<Contact[]> {
-    if (this.isOnline) {
-      try {
-        const res = await apiClient.get('/contacts?limit=100');
-        if (res.data?.items) {
-          const formatted = res.data.items.map((c: any) => ({
-            id: c.id,
-            name: c.name || 'Unnamed',
-            phoneNumber: c.phoneNumber,
-            isSuppressed: c.isSuppressed,
-            optInConsent: true,
-            tag: c.metadata?.tag || 'General',
-            createdAt: c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-IN') : 'Recent',
-          }));
-          saveToStorage(STORAGE_KEYS.CONTACTS, formatted);
-          return formatted;
-        }
-      } catch (e) {
-        console.warn('Backend contacts fetch failed; falling back to persistent storage', e);
+    try {
+      const res = await apiClient.get('/contacts?limit=2000');
+      if (res.data?.items && Array.isArray(res.data.items)) {
+        const formatted: Contact[] = res.data.items.map((c: any) => ({
+          id: c.id,
+          name: c.name || 'Unnamed',
+          phoneNumber: c.phoneNumber,
+          tag: c.metadata?.tag || 'General',
+          service: c.metadata?.service || 'New Inquiries',
+          source: c.metadata?.source || 'WhatsApp',
+          status: c.metadata?.status || 'New',
+          assignedRep: c.metadata?.assignedRep || 'ABHI',
+          enquiredTime: c.metadata?.enquiredTime || '5:18 PM',
+          isSuppressed: c.isSuppressed || false,
+          optInConsent: true,
+          createdAt: c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-IN') : 'Recent',
+        }));
+        saveToStorage(STORAGE_KEYS.CONTACTS, formatted);
+        return formatted;
       }
+    } catch (e) {
+      console.warn('Backend contacts fetch failed; falling back to persistent storage', e);
     }
-    return loadFromStorage<Contact[]>(STORAGE_KEYS.CONTACTS, initialContacts);
+    return loadFromStorage<Contact[]>(STORAGE_KEYS.CONTACTS, []);
   }
 
-  // Save new contact
+  // Save new contact to PostgreSQL
   async createContact(contact: Omit<Contact, 'id' | 'createdAt'>): Promise<Contact> {
     const newContact: Contact = {
       id: `c-${Date.now()}`,
@@ -107,23 +110,84 @@ export class DynamicStoreManager {
       createdAt: new Date().toLocaleDateString('en-IN'),
     };
 
-    if (this.isOnline) {
-      try {
-        await apiClient.post('/contacts', {
-          phoneNumber: contact.phoneNumber,
-          name: contact.name,
-          optInConsent: contact.optInConsent,
-          metadata: { tag: contact.tag },
-        });
-      } catch (e) {
-        console.warn('Backend contact creation failed; saving locally', e);
+    try {
+      const res = await apiClient.post('/contacts', {
+        phoneNumber: contact.phoneNumber,
+        name: contact.name,
+        optInConsent: contact.optInConsent !== false,
+        tag: contact.tag,
+        service: (contact as any).service || 'New Inquiries',
+        metadata: {
+          tag: contact.tag,
+          service: (contact as any).service || 'New Inquiries',
+          source: (contact as any).source || 'WhatsApp',
+          status: (contact as any).status || 'New',
+          assignedRep: (contact as any).assignedRep || 'ABHI',
+          enquiredTime: (contact as any).enquiredTime || '5:18 PM',
+        },
+      });
+      if (res.data?.id) {
+        newContact.id = res.data.id;
       }
+    } catch (e) {
+      console.warn('Backend contact creation failed; saving locally', e);
     }
 
-    const current = loadFromStorage<Contact[]>(STORAGE_KEYS.CONTACTS, initialContacts);
-    const updated = [newContact, ...current];
+    const current = loadFromStorage<Contact[]>(STORAGE_KEYS.CONTACTS, []);
+    const updated = [newContact, ...current.filter((c) => c.phoneNumber !== newContact.phoneNumber)];
     saveToStorage(STORAGE_KEYS.CONTACTS, updated);
     return newContact;
+  }
+
+  // Batch save multiple contacts to PostgreSQL (e.g. from Excel / CSV import)
+  async bulkCreateContacts(contacts: Contact[]): Promise<{ success: boolean; count: number }> {
+    try {
+      const payload = contacts.map((c) => ({
+        phoneNumber: c.phoneNumber,
+        name: c.name,
+        tag: c.tag,
+        service: (c as any).service || 'New Inquiries',
+        source: (c as any).source || 'WhatsApp',
+        status: (c as any).status || 'New',
+        assignedRep: (c as any).assignedRep || 'ABHI',
+        metadata: {
+          tag: c.tag,
+          service: (c as any).service || 'New Inquiries',
+          source: (c as any).source || 'WhatsApp',
+          status: (c as any).status || 'New',
+          assignedRep: (c as any).assignedRep || 'ABHI',
+          enquiredTime: (c as any).enquiredTime || '5:18 PM',
+        },
+      }));
+      await apiClient.post('/contacts/bulk', { contacts: payload });
+    } catch (e) {
+      console.warn('Backend bulk contacts creation failed:', e);
+    }
+    saveToStorage(STORAGE_KEYS.CONTACTS, contacts);
+    return { success: true, count: contacts.length };
+  }
+
+  // Delete contact from PostgreSQL
+  async deleteContact(id: string): Promise<boolean> {
+    try {
+      await apiClient.delete(`/contacts/${id}`);
+    } catch (e) {
+      console.warn('Backend contact delete failed:', e);
+    }
+    const current = loadFromStorage<Contact[]>(STORAGE_KEYS.CONTACTS, []);
+    saveToStorage(STORAGE_KEYS.CONTACTS, current.filter((c) => c.id !== id));
+    return true;
+  }
+
+  // Clear all contacts from PostgreSQL
+  async clearAllContacts(): Promise<boolean> {
+    try {
+      await apiClient.delete('/contacts');
+    } catch (e) {
+      console.warn('Backend clear contacts failed:', e);
+    }
+    saveToStorage(STORAGE_KEYS.CONTACTS, []);
+    return true;
   }
 
   // Load Campaigns

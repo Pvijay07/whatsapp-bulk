@@ -145,6 +145,22 @@ export const App: React.FC = () => {
     saveToStorage('wa_saas_warmup_logs_v2', warmupLogs);
   }, [warmupLogs]);
 
+  // Load real contacts from PostgreSQL Backend on startup
+  useEffect(() => {
+    let mounted = true;
+    dynamicStore
+      .getContacts()
+      .then((loaded) => {
+        if (mounted && Array.isArray(loaded) && loaded.length > 0) {
+          setContacts(loaded);
+        }
+      })
+      .catch((e) => console.warn('Could not load contacts from DB:', e));
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   // Live WhatsApp Session continuous synchronization (polls every 3s)
   useEffect(() => {
     const syncSession = async () => {
@@ -459,7 +475,8 @@ export const App: React.FC = () => {
       saveToStorage('wa_saas_contacts_v2', updated);
       return updated;
     });
-    showToast('Lead deleted from directory');
+    dynamicStore.deleteContact(id).catch(console.warn);
+    showToast('Lead deleted from database');
   };
 
   const handleUpdateContact = (updatedContact: Contact) => {
@@ -553,11 +570,12 @@ export const App: React.FC = () => {
     const updated = deduplicateContacts([...newEntries, ...contacts]);
     setContacts(updated);
     saveToStorage('wa_saas_contacts_v2', updated);
+    dynamicStore.bulkCreateContacts(updated).catch(console.warn);
 
     if (duplicateCount > 0) {
-      showToast(`Imported ${newEntries.length} new contacts (${duplicateCount} existing duplicates skipped).`);
+      showToast(`Imported ${newEntries.length} new contacts (${duplicateCount} existing duplicates skipped). Saved to PostgreSQL!`);
     } else {
-      showToast(`Successfully imported & saved ${newEntries.length} contacts!`);
+      showToast(`Successfully imported & saved ${newEntries.length} contacts to PostgreSQL!`);
     }
   };
 
