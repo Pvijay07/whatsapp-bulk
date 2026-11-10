@@ -48,7 +48,10 @@ import { WebhooksController } from './modules/webhooks/webhooks.controller';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['backend/.env', '.env', '../.env'],
+    }),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'super_secret_development_jwt_key_32_chars',
