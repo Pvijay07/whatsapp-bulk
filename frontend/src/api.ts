@@ -21,11 +21,25 @@ export const apiClient = axios.create({
 // Attach JWT token from localStorage if available
 apiClient.interceptors.request.use((config) => {
   const token = localStorage.getItem('wa_saas_token');
-  if (token) {
+  // Discard old mock tokens
+  if (token && !token.startsWith('sb_token_')) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
+
+// Auto-redirect to login on 401 Unauthorized
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401 && !error.config?.url?.includes('/auth/login')) {
+      localStorage.removeItem('wa_saas_token');
+      localStorage.removeItem('wa_saas_user');
+      window.dispatchEvent(new Event('auth:unauthorized'));
+    }
+    return Promise.reject(error);
+  },
+);
 
 // Keys for local persistence (v2 - Clean live storage, no mock data)
 const STORAGE_KEYS = {
@@ -678,51 +692,68 @@ export class DynamicStoreManager {
     }
   }
 
-  // Authentication Helpers
+  // Real Backend Authentication against PostgreSQL
   async login(credentials: {
     email: string;
     password: string;
   }): Promise<{ success: boolean; token?: string; user?: any; error?: string }> {
     try {
-      const res = await apiClient.post('/auth/login', credentials);
+      const res = await apiClient.post('/auth/login', {
+        email: credentials.email.trim().toLowerCase(),
+        password: credentials.password,
+      });
+
       if (res.data?.accessToken) {
         localStorage.setItem(STORAGE_KEYS.TOKEN, res.data.accessToken);
         const userData = res.data.user || {
           email: credentials.email.toLowerCase(),
-          name: 'Admin info',
+          name: res.data.user?.name || credentials.email.split('@')[0],
+          role: res.data.user?.role || 'OWNER',
         };
         localStorage.setItem('wa_saas_user', JSON.stringify(userData));
         return { success: true, token: res.data.accessToken, user: userData };
       }
+      return { success: false, error: 'Authentication failed. Please verify credentials.' };
     } catch (err: any) {
-      console.warn('Backend /auth/login error; falling back to client-session validation:', err);
-    }
-
-    // Default admin fallback for seamless usage
-    if (
-      credentials.email.trim().toLowerCase() === 'info@sibestce.in' &&
-      (credentials.password === 'admin123' || credentials.password === 'admin' || credentials.password.length >= 4)
-    ) {
-      const mockToken = `sb_token_${Date.now()}`;
-      const user = { email: 'info@sibestce.in', name: 'Admin info', role: 'OWNER' };
-      localStorage.setItem(STORAGE_KEYS.TOKEN, mockToken);
-      localStorage.setItem('wa_saas_user', JSON.stringify(user));
-      return { success: true, token: mockToken, user };
-    }
-
-    if (credentials.email.includes('@') && credentials.password.length >= 4) {
-      const mockToken = `sb_token_${Date.now()}`;
-      const user = {
-        email: credentials.email.trim().toLowerCase(),
-        name: credentials.email.split('@')[0],
-        role: 'OWNER',
+      const serverMsg = err.response?.data?.message || err.message;
+      return {
+        success: false,
+        error: Array.isArray(serverMsg) ? serverMsg.join(', ') : serverMsg || 'Invalid email or password.',
       };
-      localStorage.setItem(STORAGE_KEYS.TOKEN, mockToken);
-      localStorage.setItem('wa_saas_user', JSON.stringify(user));
-      return { success: true, token: mockToken, user };
     }
+  }
 
-    return { success: false, error: 'Invalid credentials. Use info@sibestce.in / admin123' };
+  // Real User Registration into PostgreSQL
+  async register(data: {
+    orgName?: string;
+    email: string;
+    password: string;
+  }): Promise<{ success: boolean; token?: string; user?: any; error?: string }> {
+    try {
+      const res = await apiClient.post('/auth/register', {
+        orgName: data.orgName || 'Petsfolio Marketing',
+        email: data.email.trim().toLowerCase(),
+        password: data.password,
+      });
+
+      if (res.data?.accessToken) {
+        localStorage.setItem(STORAGE_KEYS.TOKEN, res.data.accessToken);
+        const userData = res.data.user || {
+          email: data.email.toLowerCase(),
+          name: data.email.split('@')[0],
+          role: 'OWNER',
+        };
+        localStorage.setItem('wa_saas_user', JSON.stringify(userData));
+        return { success: true, token: res.data.accessToken, user: userData };
+      }
+      return { success: false, error: 'Registration failed.' };
+    } catch (err: any) {
+      const serverMsg = err.response?.data?.message || err.message;
+      return {
+        success: false,
+        error: Array.isArray(serverMsg) ? serverMsg.join(', ') : serverMsg || 'Registration failed.',
+      };
+    }
   }
 
   logout(): void {
@@ -741,7 +772,12 @@ export class DynamicStoreManager {
   }
 
   isAuthenticated(): boolean {
-    return !!localStorage.getItem(STORAGE_KEYS.TOKEN);
+    const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
+    // Reject mock tokens from previous client sessions
+    if (!token || token.startsWith('sb_token_')) {
+      return false;
+    }
+    return true;
   }
 }
 

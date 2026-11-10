@@ -52,7 +52,7 @@ import { WebhooksController } from './modules/webhooks/webhooks.controller';
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'super_secret_development_jwt_key_32_chars',
-      signOptions: { expiresIn: '1d' },
+      signOptions: { expiresIn: '7d' },
     }),
   ],
   controllers: [

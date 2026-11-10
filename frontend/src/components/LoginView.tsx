@@ -8,18 +8,21 @@ import {
   ShieldCheck,
   Sparkles,
   AlertCircle,
-  CheckCircle2,
+  Building,
+  UserCheck,
 } from 'lucide-react';
 
 interface LoginViewProps {
   onLogin: (credentials: { email: string; password: string }) => Promise<{ success: boolean; error?: string }>;
+  onRegister?: (data: { orgName: string; email: string; password: string }) => Promise<{ success: boolean; error?: string }>;
 }
 
-export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
-  const [email, setEmail] = useState('info@sibestce.in');
-  const [password, setPassword] = useState('admin123');
+export const LoginView: React.FC<LoginViewProps> = ({ onLogin, onRegister }) => {
+  const [mode, setMode] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
+  const [email, setEmail] = useState('admin@petsfolio.in');
+  const [password, setPassword] = useState('Admin@Petsfolio2026!');
+  const [orgName, setOrgName] = useState('Petsfolio Marketing');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -34,20 +37,31 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
     setIsLoading(true);
 
     try {
-      const res = await onLogin({ email, password });
-      if (!res.success) {
-        setErrorMessage(res.error || 'Authentication failed. Please check credentials.');
+      if (mode === 'LOGIN') {
+        const res = await onLogin({ email, password });
+        if (!res.success) {
+          setErrorMessage(res.error || 'Invalid email or password.');
+        }
+      } else {
+        if (!onRegister) {
+          setErrorMessage('Registration is not enabled.');
+          return;
+        }
+        const res = await onRegister({ orgName, email, password });
+        if (!res.success) {
+          setErrorMessage(res.error || 'Registration failed.');
+        }
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Login failed. Please try again.');
+      setErrorMessage(err.message || 'Authentication failed. Please verify credentials.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const fillDemoCredentials = () => {
-    setEmail('info@sibestce.in');
-    setPassword('admin123');
+  const fillDefaultAdmin = () => {
+    setEmail('admin@petsfolio.in');
+    setPassword('Admin@Petsfolio2026!');
     setErrorMessage(null);
   };
 
@@ -55,24 +69,60 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
     <div className="min-h-screen bg-[#f8fafc] flex flex-col justify-center items-center p-4 selection:bg-teal-100 selection:text-teal-900">
       <div className="w-full max-w-md animate-in fade-in slide-in-from-bottom-4 duration-300">
         {/* Brand Header */}
-        <div className="text-center mb-8">
-          <div className="inline-block p-2 rounded-2xl bg-white border border-slate-200/80 shadow-2xs mb-4">
+        <div className="text-center mb-6">
+          <div className="inline-block p-2 rounded-2xl bg-white border border-slate-200/80 shadow-2xs mb-3">
             <img
               src="/logo.png"
-              alt="salesbuster.ai"
+              alt="Petsfolio Marketing"
               className="h-9 w-auto object-contain mx-auto"
+              onError={(e) => {
+                // Fallback text icon if logo.png not found
+                e.currentTarget.style.display = 'none';
+              }}
             />
+            <div className="text-base font-extrabold text-[#00897b] flex items-center justify-center gap-1.5 px-3 py-1">
+              <ShieldCheck className="w-5 h-5 text-emerald-600" />
+              <span>Petsfolio WhatsApp SaaS</span>
+            </div>
           </div>
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-            Sign in to salesbuster.ai
+          <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">
+            {mode === 'LOGIN' ? 'Sign in to Your Account' : 'Create New Admin Account'}
           </h1>
-          <p className="text-xs text-slate-500 mt-1.5">
-            Enterprise customer leads repository & WhatsApp marketing gateway
+          <p className="text-xs text-slate-500 mt-1">
+            Enterprise WhatsApp Multi-Number Gateway & CRM
           </p>
         </div>
 
+        {/* Tab Switcher */}
+        <div className="flex bg-slate-200/70 p-1 rounded-2xl mb-4 max-w-xs mx-auto text-xs font-bold">
+          <button
+            type="button"
+            onClick={() => {
+              setMode('LOGIN');
+              setErrorMessage(null);
+            }}
+            className={`flex-1 py-1.5 rounded-xl transition ${
+              mode === 'LOGIN' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Sign In
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMode('REGISTER');
+              setErrorMessage(null);
+            }}
+            className={`flex-1 py-1.5 rounded-xl transition ${
+              mode === 'REGISTER' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Create Account
+          </button>
+        </div>
+
         {/* Card Form */}
-        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xl p-8 space-y-5">
+        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xl p-7 space-y-4">
           {errorMessage && (
             <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-xs text-rose-700 animate-in fade-in">
               <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
@@ -80,11 +130,31 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-3.5">
+            {/* Org Name Field (Register Mode Only) */}
+            {mode === 'REGISTER' && (
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Organization / Business Name
+                </label>
+                <div className="relative">
+                  <Building className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    required
+                    value={orgName}
+                    onChange={(e) => setOrgName(e.target.value)}
+                    placeholder="e.g. Petsfolio Hyderabad"
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00b493]"
+                  />
+                </div>
+              </div>
+            )}
+
             {/* Email Field */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                Work Email Address
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Admin Email Address
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -93,25 +163,28 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="info@sibestce.in"
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00b493] focus:border-transparent transition"
+                  placeholder="admin@petsfolio.in"
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00b493] transition"
                 />
               </div>
             </div>
 
             {/* Password Field */}
             <div>
-              <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-bold text-slate-700">
                   Password
                 </label>
-                <button
-                  type="button"
-                  onClick={() => alert('Demo default password is: admin123')}
-                  className="text-[11px] font-semibold text-[#00897b] hover:underline"
-                >
-                  Forgot password?
-                </button>
+                {mode === 'LOGIN' && (
+                  <button
+                    type="button"
+                    onClick={fillDefaultAdmin}
+                    className="text-[11px] font-bold text-[#00897b] hover:underline flex items-center gap-1"
+                  >
+                    <Sparkles className="w-3 h-3 text-[#00a79d]" />
+                    Use Default Admin
+                  </button>
+                )}
               </div>
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -120,8 +193,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00b493] focus:border-transparent transition"
+                  placeholder="••••••••••••"
+                  className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#00b493] transition font-mono"
                 />
                 <button
                   type="button"
@@ -133,44 +206,20 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
               </div>
             </div>
 
-            {/* Remember Me */}
-            <div className="flex items-center justify-between pt-1">
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="w-4 h-4 text-[#00b493] rounded focus:ring-0 cursor-pointer"
-                />
-                <span className="text-xs text-slate-600 font-medium">Keep me signed in</span>
-              </label>
-
-              {/* 1-Click Fill Demo */}
-              <button
-                type="button"
-                onClick={fillDemoCredentials}
-                className="text-[11px] font-bold text-[#00897b] bg-[#e6fffa] hover:bg-[#ccfbf1] px-2 py-0.5 rounded-md border border-[#99f6e4] transition flex items-center gap-1"
-                title="Fill demo credentials"
-              >
-                <Sparkles className="w-3 h-3 text-[#00a79d]" />
-                Demo Info
-              </button>
-            </div>
-
             {/* Submit Button */}
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-2.5 px-4 bg-[#00b493] hover:bg-[#009e81] text-white rounded-xl text-xs font-bold transition shadow-md shadow-teal-500/20 flex items-center justify-center gap-2 active:scale-98 disabled:opacity-70 disabled:cursor-not-allowed mt-2"
+              className="w-full py-2.5 px-4 bg-[#00b493] hover:bg-[#009e81] text-white rounded-xl text-xs font-bold transition shadow-md shadow-teal-500/20 flex items-center justify-center gap-2 active:scale-98 disabled:opacity-70 disabled:cursor-not-allowed mt-3"
             >
               {isLoading ? (
                 <>
                   <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Signing in...</span>
+                  <span>{mode === 'LOGIN' ? 'Verifying with PostgreSQL...' : 'Creating Account...'}</span>
                 </>
               ) : (
                 <>
-                  <span>Sign In to Dashboard</span>
+                  <span>{mode === 'LOGIN' ? 'Sign In with Secure JWT' : 'Register Account'}</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
@@ -180,16 +229,15 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
           {/* Verification Badge */}
           <div className="pt-3 border-t border-slate-100 flex items-center justify-center gap-2 text-[11px] text-slate-400 font-medium">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-            <span>256-bit Encrypted Session • Verified Tenant</span>
+            <span>PostgreSQL Bcrypt 10-Salt Hashed • 7-Day Signed JWT</span>
           </div>
         </div>
 
         {/* Footer Note */}
         <div className="text-center mt-6 text-xs text-slate-400">
-          salesbuster.ai &copy; {new Date().getFullYear()} • Enterprise Multi-WhatsApp Cloud
+          bulk.petsfolio.in &copy; {new Date().getFullYear()} • Secure Multi-WhatsApp Marketing Gateway
         </div>
       </div>
     </div>
   );
 };
-

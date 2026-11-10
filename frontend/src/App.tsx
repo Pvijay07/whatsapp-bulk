@@ -53,20 +53,31 @@ export const deduplicateContacts = (list: Contact[]): Contact[] => {
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<AppTabId>('crm');
 
-  // User Authentication State (Default logged in with demo, togglable via Login/Logout)
+  // User Authentication State (Real PostgreSQL JWT Authentication)
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     return dynamicStore.isAuthenticated();
   });
   const [currentUser, setCurrentUser] = useState<{ email: string; name: string } | null>(() => {
-    return dynamicStore.getCurrentUser() || { email: 'info@sibestce.in', name: 'Admin info' };
+    return dynamicStore.getCurrentUser();
   });
 
   const handleLogin = async (credentials: { email: string; password: string }) => {
     const res = await dynamicStore.login(credentials);
     if (res.success) {
       setIsAuthenticated(true);
-      setCurrentUser(res.user || { email: credentials.email, name: 'Admin info' });
+      setCurrentUser(res.user || { email: credentials.email, name: 'Admin' });
       showToast(`Welcome back, ${res.user?.name || 'Admin'}!`);
+      return { success: true };
+    }
+    return { success: false, error: res.error };
+  };
+
+  const handleRegister = async (data: { orgName: string; email: string; password: string }) => {
+    const res = await dynamicStore.register(data);
+    if (res.success) {
+      setIsAuthenticated(true);
+      setCurrentUser(res.user || { email: data.email, name: 'Admin' });
+      showToast(`Account created successfully! Welcome, ${res.user?.name || 'Admin'}!`);
       return { success: true };
     }
     return { success: false, error: res.error };
@@ -75,7 +86,8 @@ export const App: React.FC = () => {
   const handleLogout = () => {
     dynamicStore.logout();
     setIsAuthenticated(false);
-    showToast('Logged out of salesbuster.ai successfully.');
+    setCurrentUser(null);
+    showToast('Logged out of Petsfolio WhatsApp gateway.');
   };
 
   // Dynamic application state (v2 - Clean live storage, zero mock data, auto de-duplicated)
@@ -723,7 +735,7 @@ export const App: React.FC = () => {
             <span className="text-sm font-medium">{toastMessage}</span>
           </div>
         )}
-        <LoginView onLogin={handleLogin} />
+        <LoginView onLogin={handleLogin} onRegister={handleRegister} />
       </div>
     );
   }
