@@ -187,6 +187,9 @@ export class BaileysSessionService implements OnModuleInit {
   }
 
   private getSessionsBaseDir(): string {
+    if (process.env.SESSIONS_DIR && fs.existsSync(process.env.SESSIONS_DIR)) {
+      return process.env.SESSIONS_DIR;
+    }
     const fixedPath = 'd:\\vijay\\whatsapp-bulk\\backend\\sessions';
     if (fs.existsSync(fixedPath)) {
       return fixedPath;

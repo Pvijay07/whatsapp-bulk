@@ -77,9 +77,13 @@ export class CampaignQueueService implements OnModuleInit {
   private readonly storageFilePath: string;
 
   constructor(private readonly baileysService: BaileysSessionService) {
-    const baseDir = fs.existsSync('d:\\vijay\\whatsapp-bulk\\backend')
-      ? 'd:\\vijay\\whatsapp-bulk\\backend'
-      : process.cwd();
+    const baseDir =
+      process.env.DATA_DIR ||
+      (fs.existsSync('d:\\vijay\\whatsapp-bulk\\backend')
+        ? 'd:\\vijay\\whatsapp-bulk\\backend'
+        : fs.existsSync(path.resolve(process.cwd(), 'backend'))
+        ? path.resolve(process.cwd(), 'backend')
+        : process.cwd());
     const dataDir = path.resolve(baseDir, 'data');
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
