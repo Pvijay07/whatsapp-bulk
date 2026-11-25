@@ -629,6 +629,8 @@ export class DynamicStoreManager {
     recipients: Array<{ phoneNumber: string; name?: string }>;
     delayIntervalSec?: number;
     spintaxEnabled?: boolean;
+    batchCooldownAfter?: number;
+    batchCooldownSec?: number;
     totalCostINR?: number;
   }): Promise<{ success: boolean; campaignId?: string; totalQueued?: number; message?: string; error?: string }> {
     try {

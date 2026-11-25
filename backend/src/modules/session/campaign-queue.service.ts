@@ -11,6 +11,8 @@ export interface QueuedMessage {
   status: 'QUEUED' | 'SENDING' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED' | 'CANCELLED';
   providerMessageId?: string;
   sentAt?: string;
+  deliveredAt?: string;
+  readAt?: string;
   errorCode?: string;
   errorMessage?: string;
   costINR: string;
@@ -149,6 +151,8 @@ export class CampaignQueueService implements OnModuleInit {
     recipients: Array<{ phoneNumber: string; name?: string }>;
     delayIntervalSec?: number;
     spintaxEnabled?: boolean;
+    batchCooldownAfter?: number;
+    batchCooldownSec?: number;
     totalCostINR?: number;
   }) {
     if (!payload.recipients || payload.recipients.length === 0) {
@@ -176,6 +180,9 @@ export class CampaignQueueService implements OnModuleInit {
       costINR: '1.00',
     }));
 
+    const cooldownAfter = payload.batchCooldownAfter || (payload.recipients.length > 20 ? 15 : 25);
+    const cooldownSec = payload.batchCooldownSec || 300;
+
     const campaign: QueuedCampaign = {
       id: campaignId,
       name: payload.campaignName || `Campaign ${new Date().toLocaleTimeString('en-IN')}`,
@@ -189,8 +196,8 @@ export class CampaignQueueService implements OnModuleInit {
       delayIntervalSec: delaySec,
       minJitterSec: 18,
       maxJitterSec: 65,
-      batchCooldownAfter: 25, // Golden Rule 5: Pause / Cooldown after every 25 messages
-      batchCooldownSec: 300, // Golden Rule 5: 5-minute coffee break (300 seconds)
+      batchCooldownAfter: cooldownAfter, // Golden Rule 5: Pause / Cooldown after every N messages (default 15 for 30 contacts)
+      batchCooldownSec: cooldownSec, // Golden Rule 5: 5-minute coffee break (300 seconds)
       spintaxEnabled: payload.spintaxEnabled !== false,
       totalContacts: payload.recipients.length,
       sentCount: 0,
@@ -353,26 +360,15 @@ export class CampaignQueueService implements OnModuleInit {
       // Persist after each send
       this.persistToDisk();
 
-      // Golden Rule 5: 25-message Cooldown / Coffee Break Safeguard
+      // Golden Rule 5: 15–25 message Cooldown / Coffee Break Safeguard
       // Protects account health against Meta's sliding window heuristic filters
       if (sentSinceLastCooldown >= (campaign.batchCooldownAfter || 25)) {
-        const onlineSessions = this.baileysService.getOnlineSessions();
-        if (
-          onlineSessions.length > 1 &&
-          (campaign.dispatchType === 'MULTI_NUMBER_POOL' || campaign.senderNumber === 'MULTI_NUMBER_POOL')
-        ) {
-          this.logger.log(
-            `🔄 Multi-SIM Pool: 25 messages dispatched on current slot. Rotating automatically to next online SIM in pool without stalling...`,
-          );
-          sentSinceLastCooldown = 0;
-        } else {
-          const breakSec = Math.max(60, campaign.batchCooldownSec || 300);
-          this.logger.log(
-            `☕ Anti-Ban Cooldown: Taking a ${Math.round(breakSec / 60)}-minute coffee break (${breakSec}s) after 25 messages to let WhatsApp algorithmic sliding windows cool down...`,
-          );
-          sentSinceLastCooldown = 0;
-          await new Promise((r) => setTimeout(r, breakSec * 1000));
-        }
+        const breakSec = Math.max(60, campaign.batchCooldownSec || 300);
+        this.logger.log(
+          `☕ Anti-Ban Cooldown: Dispatched ${sentSinceLastCooldown} messages. Taking a ${Math.round(breakSec / 60)}-minute coffee break (${breakSec}s) to allow WhatsApp algorithmic sliding windows to cool down...`,
+        );
+        sentSinceLastCooldown = 0;
+        await new Promise((r) => setTimeout(r, breakSec * 1000));
       }
     }
 
@@ -394,14 +390,24 @@ export class CampaignQueueService implements OnModuleInit {
     const receipts = this.baileysService.getMessageStatuses();
     let deliveredCount = 0;
     let readCount = 0;
+    const nowFormatted = new Date().toLocaleTimeString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
 
     for (const msg of campaign.messages) {
       if (msg.providerMessageId && receipts.has(msg.providerMessageId)) {
         const item = receipts.get(msg.providerMessageId)!;
-        if (item.status === 'DELIVERED' && msg.status === 'SENT') {
-          msg.status = 'DELIVERED';
+        if (item.status === 'DELIVERED') {
+          if (msg.status === 'SENT') {
+            msg.status = 'DELIVERED';
+          }
+          if (!msg.deliveredAt) msg.deliveredAt = nowFormatted;
         } else if (item.status === 'READ') {
           msg.status = 'READ';
+          if (!msg.readAt) msg.readAt = nowFormatted;
+          if (!msg.deliveredAt) msg.deliveredAt = nowFormatted;
         }
       }
       if (msg.status === 'DELIVERED') deliveredCount++;

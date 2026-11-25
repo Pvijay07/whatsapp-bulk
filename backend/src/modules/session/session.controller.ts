@@ -245,6 +245,8 @@ export class SessionController {
       recipients: Array<{ phoneNumber: string; name?: string }>;
       delayIntervalSec?: number;
       spintaxEnabled?: boolean;
+      batchCooldownAfter?: number;
+      batchCooldownSec?: number;
       totalCostINR?: number;
     },
   ) {

@@ -307,28 +307,29 @@ export const App: React.FC = () => {
             return merged;
           });
 
-          // Sync messages from active server campaign
-          const activeCamp =
-            serverCampaigns.find((c: any) => c.status === 'SENDING' || c.status === 'PAUSED') ||
-            serverCampaigns[0];
-          if (activeCamp && activeCamp.messages && activeCamp.messages.length > 0) {
-            const sMsgs: MessageLog[] = activeCamp.messages.map((m: any) => ({
+          // Sync messages from all server campaigns for rich delivery reports
+          const allServerMsgs: MessageLog[] = serverCampaigns.flatMap((camp: any) =>
+            (camp.messages || []).map((m: any) => ({
               id: m.id,
-              campaignId: activeCamp.id,
+              campaignId: camp.id,
               contactName: m.recipientName,
               phoneNumber: m.recipientPhoneNumber,
               status: m.status,
               providerMessageId:
                 m.providerMessageId || (m.status === 'QUEUED' ? 'Queued on Server Worker' : ''),
               sentAt: m.sentAt,
+              deliveredAt: m.deliveredAt,
+              readAt: m.readAt,
               errorCode: m.errorCode,
               costINR: m.costINR || '1.00',
-            }));
+            })),
+          );
 
+          if (allServerMsgs.length > 0) {
             setMessages((prev) => {
-              const existingIds = new Set(sMsgs.map((sm) => sm.id));
+              const existingIds = new Set(allServerMsgs.map((sm) => sm.id));
               const filtered = prev.filter((p) => !existingIds.has(p.id));
-              return [...sMsgs, ...filtered];
+              return [...allServerMsgs, ...filtered];
             });
           }
         }
@@ -365,6 +366,8 @@ export const App: React.FC = () => {
     recipients: Contact[];
     delayIntervalSec: number;
     spintaxEnabled: boolean;
+    batchCooldownAfter?: number;
+    batchCooldownSec?: number;
     totalCostINR: number;
   }) => {
     showToast(`Enqueuing ${data.recipients.length} messages to Server Background Queue...`);
@@ -380,6 +383,8 @@ export const App: React.FC = () => {
       recipients: data.recipients.map((r) => ({ phoneNumber: r.phoneNumber, name: r.name })),
       delayIntervalSec: data.delayIntervalSec,
       spintaxEnabled: data.spintaxEnabled,
+      batchCooldownAfter: data.batchCooldownAfter,
+      batchCooldownSec: data.batchCooldownSec,
       totalCostINR: data.totalCostINR,
     });
 

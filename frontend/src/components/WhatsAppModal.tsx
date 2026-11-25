@@ -66,6 +66,8 @@ interface WhatsAppModalProps {
     recipients: Contact[];
     delayIntervalSec: number;
     spintaxEnabled: boolean;
+    batchCooldownAfter?: number;
+    batchCooldownSec?: number;
     totalCostINR: number;
   }) => void;
 }
@@ -134,8 +136,11 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
   );
 
   // Direct Message Composer (No Meta template approvals required!)
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(
+    templates[0]?.id || 'tmpl-petsfolio-spintax',
+  );
   const [messageText, setMessageText] = useState(
-    templates[0]?.bodyText || '{Hello|Hi|Greetings} {{1}}! We have an exclusive festive offer for you today. Reply with YES to receive your coupon code!',
+    templates[0]?.bodyText || 'Hi Pet Parent! 🐾\nLooking for Walking, Grooming, Training or Pet Sitting services?\nBook your pet\'s favourite service with Petsfolio today!',
   );
 
   // Interactive Single Quick Reply Action Button (directing to 917997887788)
@@ -230,7 +235,9 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
   };
 
   // Anti-Ban & Humanized Controls (6 Golden Rules)
-  const [delayIntervalSec, setDelayIntervalSec] = useState(25);
+  // Default to 28s (matching user's 25-30s pacing requirement)
+  const [delayIntervalSec, setDelayIntervalSec] = useState(28);
+  const [cooldownAfter, setCooldownAfter] = useState<number>(15);
   const [spintaxEnabled, setSpintaxEnabled] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [spintaxVariantSeed, setSpintaxVariantSeed] = useState(0);
@@ -268,6 +275,8 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
         recipients: eligibleRecipients,
         delayIntervalSec,
         spintaxEnabled,
+        batchCooldownAfter: cooldownAfter,
+        batchCooldownSec: 300,
         totalCostINR,
       });
       setIsSending(false);
@@ -698,8 +707,62 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
             </div>
 
             {/* Direct Message Composer (Free text + Spintax) */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
+            <div className="space-y-2">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    Template Preset (Petsfolio Verified)
+                  </label>
+                  <span className="text-[11px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                    5 Variations + Dynamic Spintax
+                  </span>
+                </div>
+                <select
+                  value={selectedTemplateId}
+                  onChange={(e) => {
+                    const tId = e.target.value;
+                    setSelectedTemplateId(tId);
+                    const found = templates.find((t) => t.id === tId);
+                    if (found) {
+                      setMessageText(found.bodyText);
+                      if (found.supportsSpintax !== undefined) {
+                        setSpintaxEnabled(found.supportsSpintax);
+                      }
+                    }
+                  }}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold bg-white text-slate-800 focus:ring-2 focus:ring-[#128C7E] focus:outline-none"
+                >
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+
+                {/* Quick 1-Click Pill Buttons for the 5 Templates */}
+                <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                  {templates.slice(0, 6).map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedTemplateId(t.id);
+                        setMessageText(t.bodyText);
+                        if (t.supportsSpintax !== undefined) setSpintaxEnabled(t.supportsSpintax);
+                      }}
+                      className={`px-2 py-1 border rounded-lg text-[10px] font-semibold transition active:scale-95 shadow-2xs ${
+                        selectedTemplateId === t.id
+                          ? 'bg-emerald-100 text-emerald-950 border-emerald-400 ring-1 ring-emerald-400'
+                          : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+                      }`}
+                    >
+                      {t.name.split(' - ')[0] || t.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between mb-1 pt-1">
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider">
                   Message Content (Direct Send)
                 </label>
@@ -708,7 +771,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
                 </span>
               </div>
               <textarea
-                rows={4}
+                rows={5}
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
                 placeholder="Type your WhatsApp broadcast message here..."
@@ -816,23 +879,47 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
                     Gaussian Sleep Interval:
                   </span>
                   <span className="font-bold text-[#075E54]">
-                    ~{delayIntervalSec}s (± 6s Gaussian Jitter, safe bounded)
+                    ~{delayIntervalSec}s (± 5s Gaussian Jitter: {Math.max(18, delayIntervalSec - 4)}s - {delayIntervalSec + 5}s)
                   </span>
                 </div>
                 <input
                   type="range"
-                  min="15"
+                  min="18"
                   max="60"
-                  step="5"
+                  step="1"
                   value={delayIntervalSec}
                   onChange={(e) => setDelayIntervalSec(parseInt(e.target.value, 10))}
                   className="w-full accent-[#128C7E]"
                 />
                 <div className="flex justify-between text-[10px] text-slate-400 mt-0.5">
-                  <span>15s (Aggressive)</span>
-                  <span className="text-emerald-700 font-medium">25s - 35s (Recommended Safe)</span>
+                  <span>18s (Fast)</span>
+                  <span className="text-emerald-700 font-bold">25s - 30s (Target Safe Gap)</span>
                   <span>60s (Ultra-Safe)</span>
                 </div>
+              </div>
+
+              {/* Coffee Break Cooldown Selector */}
+              <div className="p-2.5 bg-white/90 border border-amber-300 rounded-lg space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-amber-950 flex items-center gap-1.5">
+                    <span>☕ Anti-Ban Coffee Break:</span>
+                  </span>
+                  <span className="text-[10px] text-amber-800 bg-amber-100 font-semibold px-2 py-0.5 rounded-full border border-amber-200">
+                    5 min cooldown
+                  </span>
+                </div>
+                <select
+                  value={cooldownAfter}
+                  onChange={(e) => setCooldownAfter(parseInt(e.target.value, 10))}
+                  className="w-full px-2 py-1.5 text-xs border border-amber-300 rounded-md bg-white font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                >
+                  <option value={15}>Pause for 5 mins after every 15 messages (Recommended for 30 contacts)</option>
+                  <option value={25}>Pause for 5 mins after every 25 messages (Standard bulk)</option>
+                  <option value={10}>Pause for 5 mins after every 10 messages (Conservative / Fresh SIMs)</option>
+                </select>
+                <p className="text-[10px] text-slate-500">
+                  Allows WhatsApp's behavioral sliding windows to reset to zero, protecting your 3 numbers from account flags.
+                </p>
               </div>
 
               {/* Golden Rules Pills */}
@@ -843,7 +930,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
                 </div>
                 <div className="bg-white/80 border border-slate-200 rounded px-2 py-1 text-slate-600 flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                  <span>Cooldown: 5m break / 25 msgs</span>
+                  <span>Rotation: Auto Round-Robin across 3 SIMs</span>
                 </div>
               </div>
             </div>
