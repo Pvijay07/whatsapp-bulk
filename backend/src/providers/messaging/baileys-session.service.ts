@@ -918,14 +918,16 @@ export class BaileysSessionService implements OnModuleInit {
 
     try {
       let clean = toPhoneNumber.replace(/[^\d]/g, '');
-      if (clean.length === 10) {
+      if (clean.length === 11 && clean.startsWith('0')) {
+        clean = `91${clean.slice(1)}`;
+      } else if (clean.length === 10) {
         clean = `91${clean}`;
       }
-      const jid = `${clean}@s.whatsapp.net`;
+      let jid = `${clean}@s.whatsapp.net`;
 
       // 1. Pre-flight verification: Check if recipient exists on WhatsApp
       try {
-        const checkResults = await sock.onWhatsApp(clean);
+        const checkResults = await sock.onWhatsApp(jid);
         const exists = checkResults && checkResults.length > 0 && !!checkResults[0]?.exists;
         if (!exists) {
           const errMsg = `Recipient number +${clean} is not registered on WhatsApp.`;
@@ -935,6 +937,9 @@ export class BaileysSessionService implements OnModuleInit {
             messageId: '',
             error: errMsg,
           };
+        }
+        if (checkResults[0]?.jid) {
+          jid = checkResults[0].jid;
         }
       } catch (checkErr: any) {
         this.logger.warn(`WhatsApp onWhatsApp check warning: ${checkErr.message}`);
@@ -975,101 +980,9 @@ export class BaileysSessionService implements OnModuleInit {
       }
 
       let sent: any;
-      let interactiveSent = false;
-
-      // Construct Native Flow Interactive Message (Matching reference layout with native CTA button & media header)
-      if (buttons && buttons.length > 0) {
-        try {
-          const nativeButtons = buttons.map((b) => {
-            const isUrl = (b.type || '').toUpperCase() === 'URL' || (b.value && b.value.startsWith('http'));
-            const targetClean = (b.value || '917997887788').replace(/[^\d]/g, '') || '917997887788';
-            const targetUrl = isUrl ? b.value! : `https://wa.me/${targetClean}`;
-            const label = b.text || 'WhatsApp Now';
-            return {
-              name: 'cta_url',
-              buttonParamsJson: JSON.stringify({
-                display_text: label,
-                url: targetUrl,
-                merchant_url: targetUrl,
-              }),
-            };
-          });
-
-          let imageMessage: any = null;
-          let hasMediaAttachment = false;
-
-          // If image media is present, upload and prepare it for the Interactive Header
-          if (media && (media.base64 || media.url)) {
-            const mime = (media.mimeType || 'application/octet-stream').toLowerCase();
-            if (mime.startsWith('image/')) {
-              let mediaBuffer: Buffer | null = null;
-              if (media.base64) {
-                const cleanB64 = media.base64.replace(/^data:[^;]+;base64,/, '');
-                mediaBuffer = Buffer.from(cleanB64, 'base64');
-              }
-              const mediaSource = mediaBuffer || { url: media.url };
-              const prepared = await prepareWAMessageMedia(
-                { image: mediaSource },
-                { upload: (sock as any).waUploadToServer },
-              );
-              if (prepared?.imageMessage) {
-                imageMessage = prepared.imageMessage;
-                hasMediaAttachment = true;
-              }
-            }
-          }
-
-          const header = hasMediaAttachment && imageMessage
-            ? proto.Message.InteractiveMessage.Header.create({
-                hasMediaAttachment: true,
-                imageMessage,
-              })
-            : proto.Message.InteractiveMessage.Header.create({
-                hasMediaAttachment: false,
-              });
-
-          const interactiveMessage = proto.Message.InteractiveMessage.create({
-            body: proto.Message.InteractiveMessage.Body.create({
-              text: finalText || '',
-            }),
-            header,
-            nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
-              buttons: nativeButtons,
-            }),
-          });
-
-          const userJid =
-            (sock as any).user?.id || (sock as any).authState?.creds?.me?.id || `${session.connectedPhoneNumber || '917997887788'}@s.whatsapp.net`;
-
-          const generated = generateWAMessageFromContent(
-            jid,
-            {
-              viewOnceMessage: {
-                message: {
-                  messageContextInfo: {
-                    deviceListMetadata: {},
-                    deviceListMetadataVersion: 2,
-                  },
-                  interactiveMessage,
-                },
-              },
-            },
-            { userJid },
-          );
-
-          this.logger.log(`Transmitting Native Flow Interactive Message with Buttons via [${session.label}] to ${jid}...`);
-          await (sock as any).relayMessage(jid, generated.message, {
-            messageId: generated.key.id,
-          });
-          sent = { key: generated.key };
-          interactiveSent = true;
-        } catch (interactiveErr: any) {
-          this.logger.warn(`Interactive button dispatch fallback: ${interactiveErr.message}`);
-        }
-      }
-
-      if (!interactiveSent) {
-        if (media && (media.base64 || media.url)) {
+      // Use standard sock.sendMessage for 100% reliable delivery & read receipts.
+      // (WhatsApp servers silently drop viewOnceMessage/nativeFlowMessage on standard multi-device sessions.)
+      if (media && (media.base64 || media.url)) {
           let mediaBuffer: Buffer | null = null;
           if (media.base64) {
             const cleanB64 = media.base64.replace(/^data:[^;]+;base64,/, '');
@@ -1115,7 +1028,6 @@ export class BaileysSessionService implements OnModuleInit {
           this.logger.log(`Transmitting WhatsApp text via [${session.label}] to ${jid}...`);
           sent = await sock.sendMessage(jid, { text: finalText });
         }
-      }
 
       // Golden Rule 3 Teardown: Mark presence as paused
       try {

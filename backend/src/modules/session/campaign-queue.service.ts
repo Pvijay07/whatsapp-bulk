@@ -162,8 +162,9 @@ export class CampaignQueueService implements OnModuleInit {
       throw new BadRequestException('Recipient list cannot be empty.');
     }
 
+    const onlineSessions = this.baileysService.getOnlineSessions();
     const session = this.baileysService.getSessionStatus();
-    if (!session.isOnline) {
+    if (onlineSessions.length === 0 && !session.isOnline) {
       throw new BadRequestException(
         'WhatsApp device is not linked or offline. Link your device before enqueuing campaigns.',
       );
@@ -296,20 +297,23 @@ export class CampaignQueueService implements OnModuleInit {
         continue;
       }
 
-      // Check device connection
+      // Check device connection across all sessions in the pool
+      const onlineSessions = this.baileysService.getOnlineSessions();
       const session = this.baileysService.getSessionStatus();
-      if (!session.isOnline) {
+      if (onlineSessions.length === 0 && !session.isOnline) {
         this.logger.warn(`WhatsApp session disconnected. Auto-pausing campaign ${campaign.id}...`);
         campaign.status = 'PAUSED';
         this.persistToDisk();
         break;
       }
 
-      // Golden Rule 5: Randomized Gaussian Jitter (e.g. mean 25s, bounded 18s - 65s)
-      const baseMean = Math.max(18, campaign.delayIntervalSec || 25);
-      const gaussianDelaySec = getGaussianJitter(baseMean, 6, 18, 65);
-      this.logger.log(`⏳ Anti-Ban Pacing: Waiting ${gaussianDelaySec}s Gaussian delay before next message...`);
-      await new Promise((r) => setTimeout(r, gaussianDelaySec * 1000));
+      // Golden Rule 5: Randomized Gaussian Jitter between messages (skip wait before 1st message)
+      if (i > 0) {
+        const baseMean = Math.max(18, campaign.delayIntervalSec || 25);
+        const gaussianDelaySec = getGaussianJitter(baseMean, 6, 18, 65);
+        this.logger.log(`⏳ Anti-Ban Pacing: Waiting ${gaussianDelaySec}s Gaussian delay before next message...`);
+        await new Promise((r) => setTimeout(r, gaussianDelaySec * 1000));
+      }
 
       // Re-check status after sleep
       if ((campaign.status as string) === 'PAUSED' || (campaign.status as string) === 'CANCELLED') {
