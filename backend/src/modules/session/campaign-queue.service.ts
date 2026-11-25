@@ -13,6 +13,9 @@ export interface QueuedMessage {
   sentAt?: string;
   deliveredAt?: string;
   readAt?: string;
+  senderNumber?: string;
+  dispatchedVia?: string;
+  senderLabel?: string;
   errorCode?: string;
   errorMessage?: string;
   costINR: string;
@@ -177,6 +180,10 @@ export class CampaignQueueService implements OnModuleInit {
       recipientPhoneNumber: rec.phoneNumber,
       recipientName: rec.name || 'Customer',
       status: 'QUEUED',
+      senderNumber:
+        payload.dispatchType === 'MULTI_NUMBER_POOL' || payload.senderNumber === 'MULTI_NUMBER_POOL'
+          ? 'Multi-SIM Pool'
+          : payload.senderNumber || session.connectedNumber || 'SIM 1',
       costINR: '1.00',
     }));
 
@@ -343,11 +350,16 @@ export class CampaignQueueService implements OnModuleInit {
       if (res.success) {
         msg.status = 'SENT';
         msg.providerMessageId = res.messageId;
+        msg.senderNumber = res.senderNumber || res.dispatchedVia || session.connectedNumber || campaign.senderNumber;
+        msg.dispatchedVia = res.dispatchedVia || session.connectedNumber || campaign.senderNumber;
+        msg.senderLabel = res.senderLabel || session.label;
         msg.sentAt = now;
         campaign.sentCount++;
         sentSinceLastCooldown++;
       } else {
         msg.status = 'FAILED';
+        msg.senderNumber = res.senderNumber || res.dispatchedVia || session.connectedNumber || campaign.senderNumber;
+        msg.dispatchedVia = res.dispatchedVia || session.connectedNumber || campaign.senderNumber;
         msg.errorCode = res.error?.includes('not registered') ? 'NOT_ON_WHATSAPP' : 'DISPATCH_FAILED';
         msg.errorMessage = res.error || 'Recipient not registered on WhatsApp';
         msg.costINR = '0.00';

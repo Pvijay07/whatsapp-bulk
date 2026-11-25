@@ -320,6 +320,8 @@ export const App: React.FC = () => {
               sentAt: m.sentAt,
               deliveredAt: m.deliveredAt,
               readAt: m.readAt,
+              senderNumber: m.senderNumber || m.dispatchedVia || camp.senderNumber,
+              dispatchedVia: m.dispatchedVia || m.senderNumber || camp.senderNumber,
               errorCode: m.errorCode,
               costINR: m.costINR || '1.00',
             })),

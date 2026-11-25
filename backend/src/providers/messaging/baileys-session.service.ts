@@ -904,7 +904,7 @@ export class BaileysSessionService implements OnModuleInit {
       fileSize?: number;
     },
     preferredSessionId?: string,
-  ): Promise<{ success: boolean; messageId: string; dispatchedVia?: string; error?: string }> {
+  ): Promise<{ success: boolean; messageId: string; dispatchedVia?: string; senderNumber?: string; senderLabel?: string; error?: string }> {
     const session = this.getNextOnlineSession(preferredSessionId);
     if (!session || !session.sock) {
       return {
@@ -1151,6 +1151,8 @@ export class BaileysSessionService implements OnModuleInit {
         success: true,
         messageId: realMsgId,
         dispatchedVia: session.connectedPhoneNumber || session.label,
+        senderNumber: session.connectedPhoneNumber || session.label,
+        senderLabel: session.label,
       };
     } catch (err: any) {
       this.logger.error(`Failed to deliver real WhatsApp message: ${err.message}`, err.stack);

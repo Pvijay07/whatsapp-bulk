@@ -133,6 +133,8 @@ export interface MessageLog {
   status: 'QUEUED' | 'SENDING' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED' | 'CANCELLED';
   providerMessageId: string;
   costINR: string;
+  senderNumber?: string;
+  dispatchedVia?: string;
   sentAt?: string;
   deliveredAt?: string;
   readAt?: string;
