@@ -64,7 +64,7 @@ export const PEER_WARMUP_CONVERSATIONS = [
 export class AccountWarmerService implements OnModuleInit {
   private readonly logger = new Logger(AccountWarmerService.name);
   private warmupLogs: WarmupLogEntry[] = [];
-  private isAutoWarmingEnabled = true;
+  private isAutoWarmingEnabled = false;
   private totalPeerExchangesToday = 0;
   private lastExchangeDate = '';
 

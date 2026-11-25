@@ -28,6 +28,8 @@ import {
   Clock,
   Shuffle,
   ShieldAlert,
+  Pause,
+  Play,
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -287,6 +289,33 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({
       setProvisionError('SMS Gateway API key (5SIM / SMS-Activate) not configured on backend. Please link your existing number using the Pairing Code or QR tab above.');
       setIsAutoProvisioning(false);
     }, 2000);
+  };
+
+  const [autoWarmupEnabled, setAutoWarmupEnabled] = useState(false);
+  const [isTogglingWarmup, setIsTogglingWarmup] = useState(false);
+
+  useEffect(() => {
+    axios.get('/api/v1/virtual-pool/warmup/status')
+      .then((res) => {
+        if (typeof res.data?.isAutoWarmingEnabled === 'boolean') {
+          setAutoWarmupEnabled(res.data.isAutoWarmingEnabled);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleToggleAutoWarmup = async () => {
+    setIsTogglingWarmup(true);
+    try {
+      const nextState = !autoWarmupEnabled;
+      const res = await axios.post('/api/v1/virtual-pool/warmup/toggle', { enabled: nextState });
+      if (typeof res.data?.enabled === 'boolean') {
+        setAutoWarmupEnabled(res.data.enabled);
+      } else {
+        setAutoWarmupEnabled(nextState);
+      }
+    } catch (e) {}
+    setIsTogglingWarmup(false);
   };
 
   const handleTriggerWarmup = async () => {
@@ -775,15 +804,40 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={handleTriggerWarmup}
-            disabled={isWarmingActive}
-            className="px-4 py-2 border border-amber-300 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 active:scale-95 shadow-sm shadow-amber-600/20 disabled:opacity-40"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 text-white ${isWarmingActive ? 'animate-spin' : ''}`} />
-            Trigger Mutual Warmup Round
-          </button>
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            <button
+              type="button"
+              onClick={handleToggleAutoWarmup}
+              disabled={isTogglingWarmup}
+              className={`px-3.5 py-2 border rounded-xl text-xs font-bold transition flex items-center gap-1.5 active:scale-95 shadow-sm disabled:opacity-40 ${
+                autoWarmupEnabled
+                  ? 'border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-700'
+                  : 'border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800'
+              }`}
+            >
+              {autoWarmupEnabled ? (
+                <>
+                  <Pause className="w-3.5 h-3.5" />
+                  Stop Auto-Warmup
+                </>
+              ) : (
+                <>
+                  <Play className="w-3.5 h-3.5" />
+                  Start Auto-Warmup
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleTriggerWarmup}
+              disabled={isWarmingActive}
+              className="px-4 py-2 border border-amber-300 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 active:scale-95 shadow-sm shadow-amber-600/20 disabled:opacity-40"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-white ${isWarmingActive ? 'animate-spin' : ''}`} />
+              Trigger Mutual Warmup Round
+            </button>
+          </div>
         </div>
 
         {/* 4-Stage Warmup Protocol Timeline Table */}
