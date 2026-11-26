@@ -948,25 +948,31 @@ export class BaileysSessionService implements OnModuleInit {
       // Golden Rule 4: Resolve Spintax {A|B|C}
       let finalText = this.resolveSpintax(text || '');
 
-      // Format 1-Click Interactive WhatsApp Action (wa.me)
-      // Exactly matching the reference layout: "<Label>: https://wa.me/<TargetPhone>"
-      if (buttons && buttons.length > 0) {
-        const b = buttons.find((btn) => (btn.type || '').toUpperCase() === 'QUICK_REPLY') || buttons[0];
-        const label = b.text || 'WhatsApp Now';
-        const targetClean = (b.value || '917997887788').replace(/[^\d]/g, '') || '917997887788';
-        const waLink = `https://wa.me/${targetClean}`;
-        const buttonLine = `${label}: ${waLink}`;
-        finalText = finalText ? `${finalText}\n\n${buttonLine}` : buttonLine;
-      }
-
       // Golden Rule 4: Inject 4-8 zero-width invisible characters (\u200B, \u200C, \u200D, \uFEFF)
-      // Every single payload now yields an entirely unique SHA-256 hash across Meta's heuristic filters
+      // Inject BEFORE the wa.me URL so the URL itself stays 100% clean and clickable!
       const zeroWidthChars = ['\u200B', '\u200C', '\u200D', '\uFEFF'];
       const entropyLength = 4 + Math.floor(Math.random() * 5); // 4 to 8 characters
       const invisibleSuffix = Array.from({ length: entropyLength }, () =>
         zeroWidthChars[Math.floor(Math.random() * zeroWidthChars.length)],
       ).join('');
       finalText = `${finalText}${invisibleSuffix}`;
+
+      // Format 1-Click Interactive WhatsApp Action (wa.me)
+      // Placed AFTER invisibleSuffix on its own clean line so WhatsApp opens https://wa.me/<TargetPhone> properly
+      if (buttons && buttons.length > 0) {
+        const b = buttons.find((btn) => (btn.type || '').toUpperCase() === 'QUICK_REPLY') || buttons[0];
+        const label = b.text || 'WhatsApp Now';
+        let targetClean = (b.value || '917997887788').replace(/[^\d]/g, '') || '917997887788';
+        if (targetClean.length === 11 && targetClean.startsWith('0')) {
+          targetClean = `91${targetClean.slice(1)}`;
+        } else if (targetClean.length === 10) {
+          targetClean = `91${targetClean}`;
+        }
+        const isUrl = (b.type || '').toUpperCase() === 'URL' || (b.value && b.value.startsWith('http'));
+        const waLink = isUrl ? b.value!.trim() : `https://wa.me/${targetClean}`;
+        const buttonLine = `${label}: ${waLink}`;
+        finalText = finalText ? `${finalText}\n\n${buttonLine}` : buttonLine;
+      }
 
       // Golden Rule 3: Human Presence Simulation (composing typing packet + realistic wait)
       try {
