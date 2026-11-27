@@ -83,6 +83,26 @@ export const FollowupReportsView: React.FC = () => {
   const [savingConfig, setSavingConfig] = useState<boolean>(false);
   const [configMsg, setConfigMsg] = useState<string>('');
 
+  const [scanning, setScanning] = useState<boolean>(false);
+  const [showPreview, setShowPreview] = useState<boolean>(false);
+  const [dueLeads, setDueLeads] = useState<
+    Array<{
+      key: string;
+      orgName: string;
+      leadName: string;
+      phone: string;
+      service: string;
+      stage: string;
+      nextAttempt: number;
+    }>
+  >([]);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [previewMeta, setPreviewMeta] = useState<{
+    totalEvaluated: number;
+    onlineSimsCount: number;
+    maxPerSimCap: number;
+  }>({ totalEvaluated: 0, onlineSimsCount: 0, maxPerSimCap: 30 });
+
   const fetchReports = useCallback(async () => {
     setLoading(true);
     try {
@@ -121,20 +141,57 @@ export const FollowupReportsView: React.FC = () => {
     return () => clearInterval(timer);
   }, [isRunning, fetchReports]);
 
-  const handleRunNow = async () => {
+  const handleScanDueLeads = async () => {
+    setScanning(true);
+    setRunStatus('');
+    try {
+      const res = await apiClient.get('/salesbuster-followups/preview', { timeout: 60000 });
+      if (res.data?.success) {
+        const list = res.data.dueLeads || [];
+        setDueLeads(list);
+        const cap = Math.max(1, res.data.onlineSimsCount || 1) * (res.data.maxPerSimCap || 30);
+        setSelectedKeys(new Set(list.slice(0, cap).map((l: any) => l.key)));
+        setPreviewMeta({
+          totalEvaluated: res.data.totalEvaluated || 0,
+          onlineSimsCount: res.data.onlineSimsCount || 0,
+          maxPerSimCap: res.data.maxPerSimCap || 30,
+        });
+        setShowPreview(true);
+        setRunStatus(
+          list.length > 0
+            ? `Found ${list.length} due contact(s) out of ${res.data.totalEvaluated} evaluated. Review & click "Process Selected" to send.`
+            : `Scanned ${res.data.totalEvaluated || 0} leads — no contacts are due for follow-up right now.`,
+        );
+      } else {
+        setRunStatus(res.data?.message || 'Unable to scan due leads.');
+      }
+    } catch (err: any) {
+      setRunStatus(err.response?.data?.message || err.message || 'Preview scan failed.');
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const handleProcessSelected = async () => {
+    if (selectedKeys.size === 0) return;
     setRunning(true);
     setRunStatus('');
     try {
-      const res = await apiClient.post('/salesbuster-followups/run-now', {}, { timeout: 30000 });
+      const res = await apiClient.post(
+        '/salesbuster-followups/run-now',
+        { selectedKeys: Array.from(selectedKeys) },
+        { timeout: 30000 },
+      );
       if (res.data?.success) {
         setIsRunning(Boolean(res.data.isRunning ?? true));
+        setShowPreview(false);
         setRunStatus(
           res.data.message ||
-            'Follow-up dispatch started in background with campaign templates & 25-30s anti-ban pacing.',
+            `Follow-up dispatch started for ${selectedKeys.size} selected contact(s).`,
         );
         await fetchReports();
       } else {
-        setRunStatus(res.data?.message || 'Unable to run follow-up sync.');
+        setRunStatus(res.data?.message || 'Unable to start follow-up dispatch.');
       }
     } catch (err: any) {
       setRunStatus(err.response?.data?.message || err.message || 'Sync failed.');
@@ -262,12 +319,12 @@ export const FollowupReportsView: React.FC = () => {
             </button>
           ) : (
             <button
-              onClick={handleRunNow}
-              disabled={running}
+              onClick={handleScanDueLeads}
+              disabled={scanning || running}
               className="px-4 py-2 rounded-xl bg-[#128C7E] hover:bg-[#0e7266] text-white text-sm font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
             >
-              <Play className="w-4 h-4" />
-              {running ? 'Starting...' : 'Run Sync Now'}
+              <RefreshCw className={`w-4 h-4 ${scanning ? 'animate-spin' : ''}`} />
+              {scanning ? 'Scanning Due Leads...' : 'Run Sync Now (Preview)'}
             </button>
           )}
 
@@ -281,6 +338,115 @@ export const FollowupReportsView: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Step 1 Preview: Due Follow-up Contacts Waiting for Confirmation */}
+      {showPreview && (
+        <div className="bg-white rounded-2xl border-2 border-[#128C7E]/40 shadow-sm overflow-hidden">
+          <div className="p-4 bg-emerald-50/70 border-b border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-emerald-950">
+                Contacts Requiring Follow-up ({dueLeads.length} Due • {selectedKeys.size} Selected)
+              </h3>
+              <p className="text-xs text-emerald-800 mt-0.5">
+                Online SIMs: <b>{previewMeta.onlineSimsCount}</b> • Safe Cap: <b>{previewMeta.maxPerSimCap} contacts/SIM</b> • No messages sent yet until you click Process.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedKeys(
+                    selectedKeys.size === dueLeads.length
+                      ? new Set()
+                      : new Set(dueLeads.map((l) => l.key)),
+                  )
+                }
+                className="px-3 py-1.5 rounded-lg border border-emerald-300 bg-white text-emerald-900 text-xs font-semibold cursor-pointer"
+              >
+                {selectedKeys.size === dueLeads.length ? 'Deselect All' : 'Select All'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowPreview(false)}
+                className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 text-xs font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleProcessSelected}
+                disabled={selectedKeys.size === 0 || running}
+                className="px-4 py-1.5 rounded-lg bg-[#075E54] hover:bg-[#128C7E] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Play className="w-3.5 h-3.5" />
+                {running ? 'Starting...' : `Process Selected (${selectedKeys.size})`}
+              </button>
+            </div>
+          </div>
+
+          {dueLeads.length === 0 ? (
+            <div className="p-8 text-center text-sm text-slate-500">
+              No contacts currently require follow-up.
+            </div>
+          ) : (
+            <div className="max-h-80 overflow-y-auto">
+              <table className="w-full text-left border-collapse text-sm">
+                <thead className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase text-slate-500 sticky top-0">
+                  <tr>
+                    <th className="py-2.5 px-4 w-10"></th>
+                    <th className="py-2.5 px-3 w-12 text-center">S.No</th>
+                    <th className="py-2.5 px-4">Lead Name</th>
+                    <th className="py-2.5 px-4">Phone</th>
+                    <th className="py-2.5 px-4">Service</th>
+                    <th className="py-2.5 px-4">Stage</th>
+                    <th className="py-2.5 px-4">Attempt</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {dueLeads.map((lead, idx) => {
+                    const checked = selectedKeys.has(lead.key);
+                    return (
+                      <tr
+                        key={lead.key}
+                        onClick={() => {
+                          const next = new Set(selectedKeys);
+                          if (checked) next.delete(lead.key);
+                          else next.add(lead.key);
+                          setSelectedKeys(next);
+                        }}
+                        className={`cursor-pointer hover:bg-emerald-50/40 ${checked ? 'bg-emerald-50/20' : ''}`}
+                      >
+                        <td className="py-2.5 px-4">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {}}
+                            className="w-4 h-4 accent-[#128C7E]"
+                          />
+                        </td>
+                        <td className="py-2.5 px-3 text-center font-mono text-xs text-slate-400">
+                          #{idx + 1}
+                        </td>
+                        <td className="py-2.5 px-4 font-semibold text-slate-900">{lead.leadName}</td>
+                        <td className="py-2.5 px-4 font-mono text-xs text-slate-600">{lead.phone}</td>
+                        <td className="py-2.5 px-4 text-xs text-slate-700">{lead.service}</td>
+                        <td className="py-2.5 px-4">
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                            {STAGE_LABELS[lead.stage] || lead.stage}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-4 text-xs font-semibold text-slate-700">
+                          #{lead.nextAttempt}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Campaign-style Template & Anti-Ban Settings Panel */}
       {showSettings && config && (

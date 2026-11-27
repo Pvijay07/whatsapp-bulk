@@ -53,15 +53,29 @@ export class SalesBusterFollowupsController {
     };
   }
 
+  @Get('preview')
+  async previewDueLeads() {
+    if (!this.mongoService.isConfigured()) {
+      return {
+        success: false,
+        dueCount: 0,
+        dueLeads: [],
+        message: 'SALESBUSTER_MONGO_URI is not configured in backend/.env',
+      };
+    }
+    const result = await this.followupsService.previewDueLeads();
+    return { success: true, ...result };
+  }
+
   @Post('run-now')
-  async runNow() {
+  async runNow(@Body() body?: { selectedKeys?: string[] }) {
     if (!this.mongoService.isConfigured()) {
       return {
         success: false,
         message: 'SALESBUSTER_MONGO_URI is not configured in backend/.env',
       };
     }
-    const result = this.followupsService.triggerBackgroundRun();
+    const result = this.followupsService.triggerBackgroundRun(body?.selectedKeys);
     return { success: true, ...result };
   }
 

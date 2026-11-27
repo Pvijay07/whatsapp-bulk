@@ -166,7 +166,7 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
     return this.isRunning;
   }
 
-  triggerBackgroundRun(): { started: boolean; isRunning: boolean; message: string } {
+  triggerBackgroundRun(selectedKeys?: string[]): { started: boolean; isRunning: boolean; message: string } {
     if (this.isRunning) {
       return {
         started: false,
@@ -176,14 +176,109 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
     }
     this.stopRequested = false;
     setImmediate(() => {
-      this.runFollowupCycle().catch((err) =>
+      this.runFollowupCycle(selectedKeys).catch((err) =>
         this.logger.error(`Background follow-up cycle failed: ${err.message}`),
       );
     });
     return {
       started: true,
       isRunning: true,
-      message: 'Follow-up dispatch started in background with campaign templates & anti-ban pacing.',
+      message: selectedKeys?.length
+        ? `Follow-up dispatch started for ${selectedKeys.length} selected lead(s) with anti-ban pacing.`
+        : 'Follow-up dispatch started in background with campaign templates & anti-ban pacing.',
+    };
+  }
+
+  async previewDueLeads(now: Date = new Date()): Promise<{
+    totalEvaluated: number;
+    dueCount: number;
+    onlineSimsCount: number;
+    maxPerSimCap: number;
+    dueLeads: Array<{
+      key: string;
+      orgId: string;
+      orgName: string;
+      tenantDbName: string;
+      mongoLeadId: string;
+      leadName: string;
+      phone: string;
+      service: string;
+      stage: FollowupStage;
+      nextAttempt: number;
+    }>;
+  }> {
+    const onlineSimsCount = Math.max(
+      0,
+      typeof (this.baileysService as any).getOnlineSessions === 'function'
+        ? this.baileysService.getOnlineSessions().length
+        : 0,
+    );
+    const maxPerSimCap = this.config.maxPerSimPerCycle || 30;
+    const dueLeads: Array<{
+      key: string;
+      orgId: string;
+      orgName: string;
+      tenantDbName: string;
+      mongoLeadId: string;
+      leadName: string;
+      phone: string;
+      service: string;
+      stage: FollowupStage;
+      nextAttempt: number;
+    }> = [];
+    let totalEvaluated = 0;
+
+    const orgs = await this.mongoService.fetchActiveOrganizations();
+    for (const org of orgs) {
+      const leads = await this.mongoService.fetchEligibleLeads(org.tenantDbName);
+      for (const lead of leads) {
+        totalEvaluated++;
+        const stage = this.resolveLeadStage(lead, now);
+        if (!stage) continue;
+
+        const phone = lead.phoneNormalized || lead.phone;
+        if (!phone) continue;
+
+        const existingState = await this.prisma.leadFollowupState.findUnique({
+          where: {
+            tenantDbName_mongoLeadId_stage: {
+              tenantDbName: org.tenantDbName,
+              mongoLeadId: lead._id,
+              stage,
+            },
+          },
+        });
+
+        if (existingState) {
+          if (existingState.status === 'COMPLETED' || existingState.status === 'SKIPPED') {
+            continue;
+          }
+          if (existingState.nextDueAt && existingState.nextDueAt > now) {
+            continue;
+          }
+        }
+
+        dueLeads.push({
+          key: `${org.tenantDbName}:${lead._id}:${stage}`,
+          orgId: org._id,
+          orgName: org.name,
+          tenantDbName: org.tenantDbName,
+          mongoLeadId: lead._id,
+          leadName: lead.name?.trim() || phone,
+          phone,
+          service: lead.service?.trim() || 'General',
+          stage,
+          nextAttempt: (existingState?.attemptCount || 0) + 1,
+        });
+      }
+    }
+
+    return {
+      totalEvaluated,
+      dueCount: dueLeads.length,
+      onlineSimsCount,
+      maxPerSimCap,
+      dueLeads,
     };
   }
 
@@ -434,7 +529,7 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
     }
   }
 
-  async runFollowupCycle(): Promise<{
+  async runFollowupCycle(selectedKeys?: string[]): Promise<{
     processedOrgs: number;
     evaluatedLeads: number;
     sentCount: number;
@@ -444,6 +539,9 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
     if (this.isRunning) {
       return { processedOrgs: 0, evaluatedLeads: 0, sentCount: 0, failedCount: 0, skippedCount: 0 };
     }
+
+    const selectedSet =
+      Array.isArray(selectedKeys) && selectedKeys.length > 0 ? new Set(selectedKeys) : null;
 
     this.isRunning = true;
     this.stopRequested = false;
@@ -472,6 +570,14 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
         const leads = await this.mongoService.fetchEligibleLeads(org.tenantDbName);
         for (const lead of leads) {
           if (this.stopRequested || summary.sentCount >= maxLeadsThisCycle) break;
+          if (selectedSet) {
+            const st = this.resolveLeadStage(lead);
+            const k = st ? `${org.tenantDbName}:${lead._id}:${st}` : '';
+            if (!st || !selectedSet.has(k)) {
+              summary.skippedCount++;
+              continue;
+            }
+          }
           summary.evaluatedLeads++;
           const outcome = await this.processSingleLead(lead, org);
           if (outcome === 'SENT') {
