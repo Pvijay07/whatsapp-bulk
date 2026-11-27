@@ -10,9 +10,10 @@ import {
   ChevronDown,
   LogOut,
   ShieldCheck,
+  Bot,
 } from 'lucide-react';
 
-export type AppTabId = 'crm' | 'campaigns' | 'reports' | 'numbers' | 'wallet' | 'support';
+export type AppTabId = 'crm' | 'campaigns' | 'reports' | 'followups' | 'numbers' | 'wallet' | 'support';
 
 interface SidebarProps {
   currentTab: AppTabId;
@@ -52,6 +53,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'reports' as AppTabId,
       label: 'Delivery Reports',
       icon: BarChart3,
+    },
+    {
+      id: 'followups' as AppTabId,
+      label: 'AI Follow-ups',
+      icon: Bot,
     },
     {
       id: 'numbers' as AppTabId,

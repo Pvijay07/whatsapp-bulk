@@ -330,3 +330,44 @@ model WalletTransaction {
   @@map("wallet_transactions")
 }
 
+model LeadFollowupState {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId        String    @map("org_id") @db.VarChar(64)
+  tenantDbName String    @map("tenant_db_name") @db.VarChar(128)
+  mongoLeadId  String    @map("mongo_lead_id") @db.VarChar(64)
+  phone        String    @db.VarChar(32)
+  stage        String    @db.VarChar(32) // new_lead | not_attended | followup | not_responding | marketing_drip
+  attemptCount Int       @default(0) @map("attempt_count")
+  status       String    @default("ACTIVE") @db.VarChar(20) // ACTIVE | COMPLETED | SKIPPED
+  lastSentAt   DateTime? @map("last_sent_at") @db.Timestamptz(6)
+  nextDueAt    DateTime? @map("next_due_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantDbName, mongoLeadId, stage])
+  @@index([stage, status, nextDueAt])
+  @@map("lead_followup_states")
+}
+
+model FollowupDispatchReport {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orgId             String   @map("org_id") @db.VarChar(64)
+  orgName           String?  @map("org_name") @db.VarChar(150)
+  tenantDbName      String   @map("tenant_db_name") @db.VarChar(128)
+  mongoLeadId       String   @map("mongo_lead_id") @db.VarChar(64)
+  leadName          String?  @map("lead_name") @db.VarChar(255)
+  phone             String   @db.VarChar(32)
+  stage             String   @db.VarChar(32)
+  attemptNumber     Int      @default(1) @map("attempt_number")
+  messageText       String   @map("message_text") @db.Text
+  senderNumber      String?  @map("sender_number") @db.VarChar(32)
+  providerMessageId String?  @map("provider_message_id") @db.VarChar(255)
+  deliveryStatus    String   @default("SENT") @map("delivery_status") @db.VarChar(32)
+  errorMessage      String?  @map("error_message") @db.Text
+  sentAt            DateTime @default(now()) @map("sent_at") @db.Timestamptz(6)
+
+  @@index([orgId, stage, sentAt])
+  @@index([mongoLeadId])
+  @@map("followup_dispatch_reports")
+}
+

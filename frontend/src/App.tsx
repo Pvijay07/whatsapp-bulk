@@ -22,6 +22,7 @@ import { ContactsView } from './components/ContactsView';
 import { LoginView } from './components/LoginView';
 import { WhatsAppModal } from './components/WhatsAppModal';
 import { DeliveryReportsView } from './components/DeliveryReportsView';
+import { FollowupReportsView } from './components/FollowupReportsView';
 import { VirtualNumbersView } from './components/VirtualNumbersView';
 import { WalletView } from './components/WalletView';
 import {
@@ -881,6 +882,8 @@ export const App: React.FC = () => {
               onCancelCampaign={handleCancelCampaign}
             />
           )}
+
+          {currentTab === 'followups' && <FollowupReportsView />}
 
           {currentTab === 'numbers' && (
             <VirtualNumbersView

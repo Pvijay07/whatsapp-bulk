@@ -45,6 +45,9 @@ import { TemplatesService } from './modules/templates/templates.service';
 import { TemplatesController } from './modules/templates/templates.controller';
 
 import { WebhooksController } from './modules/webhooks/webhooks.controller';
+import { SalesBusterMongoService } from './modules/salesbuster-followups/salesbuster-mongo.service';
+import { SalesBusterFollowupsService } from './modules/salesbuster-followups/salesbuster-followups.service';
+import { SalesBusterFollowupsController } from './modules/salesbuster-followups/salesbuster-followups.controller';
 
 @Module({
   imports: [
@@ -69,6 +72,7 @@ import { WebhooksController } from './modules/webhooks/webhooks.controller';
     VirtualNumbersController,
     WhatsAppAccountsController,
     WebhooksController,
+    SalesBusterFollowupsController,
   ],
   providers: [
     PrismaService,
@@ -90,6 +94,8 @@ import { WebhooksController } from './modules/webhooks/webhooks.controller';
     MockMessagingAdapter,
     ExotelNumberAdapter,
     MockNumberAdapter,
+    SalesBusterMongoService,
+    SalesBusterFollowupsService,
   ],
 })
 export class AppModule {}
