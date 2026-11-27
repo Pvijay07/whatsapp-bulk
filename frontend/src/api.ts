@@ -15,7 +15,7 @@ const API_BASE_URL = '/api/v1';
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 5000,
+  timeout: 30000,
 });
 
 // Attach JWT token from localStorage if available

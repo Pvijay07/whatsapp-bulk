@@ -63,7 +63,7 @@ export const FollowupReportsView: React.FC = () => {
     setRunning(true);
     setRunStatus('');
     try {
-      const res = await apiClient.post('/salesbuster-followups/run-now');
+      const res = await apiClient.post('/salesbuster-followups/run-now', {}, { timeout: 120000 });
       if (res.data?.success) {
         setRunStatus(
           `Synced ${res.data.evaluatedLeads} leads: ${res.data.sentCount} sent, ${res.data.failedCount} failed, ${res.data.skippedCount} skipped.`,
