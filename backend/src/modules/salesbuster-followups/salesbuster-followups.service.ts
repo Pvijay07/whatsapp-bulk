@@ -1,8 +1,11 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import axios from 'axios';
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
 import { PrismaService } from '../../database/prisma.service';
 import { BaileysSessionService } from '../../providers/messaging/baileys-session.service';
+import { getGaussianJitter } from '../session/campaign-queue.service';
 import {
   SalesBusterLead,
   SalesBusterMessage,
@@ -46,17 +49,137 @@ export type FollowupStage =
   | 'not_responding'
   | 'marketing_drip';
 
+export interface FollowupCampaignConfig {
+  mode: 'TEMPLATE' | 'AI_PLUS_TEMPLATE';
+  dispatchType: 'MULTI_NUMBER_POOL' | 'DEDICATED_NUMBER';
+  senderNumber: string;
+  delayIntervalSec: number;
+  batchCooldownAfter: number;
+  batchCooldownSec: number;
+  spintaxEnabled: boolean;
+  buttonEnabled: boolean;
+  buttonText: string;
+  buttonValue: string;
+  stageTemplates: Record<FollowupStage, string>;
+}
+
+const DEFAULT_STAGE_TEMPLATES: Record<FollowupStage, string> = {
+  new_lead:
+    "{Hi|Hello|Dear} {{1}}! 🐾\nThank you for reaching out to {{company}} regarding *{{service}}*.\n{Looking for Walking, Grooming, Training or Pet Sitting services? Book your pet's favourite service with Petsfolio today!|Give your furry friend the care they deserve with Petsfolio. 📲 Explore our services now!}",
+  not_attended:
+    '{Hi|Hello} {{1}}! 🐶\nWe noticed we missed connecting with you earlier about *{{service}}* at {{company}}.\nBusy with your daily schedule? Petsfolio is here to take care of your furry friend. 🐾 Book your service today!',
+  followup:
+    '{Hi|Hello|Dear} {{1}}, 🐕\nJust following up as scheduled regarding *{{service}}* with {{company}}.\nFrom daily walks to grooming, training and sitting, Petsfolio makes pet care easier. 📲 Book Now!',
+  not_responding:
+    "{Hi|Hello|Dear} {{1}}! {🐾|🐶|❤️}\nChecking in regarding your *{{service}}* enquiry with {{company}}.\n{Looking for Walking, Grooming, Training or Pet Sitting services? Book your pet's favourite service with Petsfolio today!|Give your furry friend the care they deserve with Petsfolio. 📲 Explore our services now!|Busy with your daily schedule? Petsfolio is here to take care of your furry friend. 🐾 Book your service today!}",
+  marketing_drip:
+    "{Hi|Hello|Dear} Pet Parent! {🐾|🐶|❤️|🐕}\n{Looking for Walking, Grooming, Training or Pet Sitting services? Book your pet's favourite service with Petsfolio today!|Give your furry friend the care they deserve with Petsfolio. 📲 Explore our services now!|Busy with your daily schedule? Petsfolio is here to take care of your furry friend. 🐾 Book your service today!|From daily walks to grooming, training and sitting, Petsfolio makes pet care easier. 📲 Book Now!|Happy pets begin with quality care. Discover convenient pet care services with Petsfolio. 📲 Open the Petsfolio App & Book Today!}",
+};
+
 @Injectable()
 export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SalesBusterFollowupsService.name);
   private pollTimer: NodeJS.Timeout | null = null;
   private isRunning = false;
+  private readonly configFilePath: string;
+  private config: FollowupCampaignConfig;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly mongoService: SalesBusterMongoService,
     private readonly baileysService: BaileysSessionService,
-  ) {}
+  ) {
+    const baseDir =
+      process.env.DATA_DIR ||
+      (fs.existsSync('d:\\vijay\\whatsapp-bulk\\backend')
+        ? 'd:\\vijay\\whatsapp-bulk\\backend'
+        : fs.existsSync(path.resolve(process.cwd(), 'backend'))
+        ? path.resolve(process.cwd(), 'backend')
+        : process.cwd());
+    const dataDir = path.resolve(baseDir, 'data');
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    this.configFilePath = path.join(dataDir, 'followup_settings.json');
+    this.config = this.loadConfig();
+  }
+
+  private loadConfig(): FollowupCampaignConfig {
+    const defaults: FollowupCampaignConfig = {
+      mode: 'TEMPLATE',
+      dispatchType: 'MULTI_NUMBER_POOL',
+      senderNumber: 'MULTI_NUMBER_POOL',
+      delayIntervalSec: 28,
+      batchCooldownAfter: 15,
+      batchCooldownSec: 300,
+      spintaxEnabled: true,
+      buttonEnabled: true,
+      buttonText: 'WhatsApp Now',
+      buttonValue: '917997887788',
+      stageTemplates: { ...DEFAULT_STAGE_TEMPLATES },
+    };
+    try {
+      if (fs.existsSync(this.configFilePath)) {
+        const raw = JSON.parse(fs.readFileSync(this.configFilePath, 'utf8'));
+        return {
+          ...defaults,
+          ...raw,
+          stageTemplates: {
+            ...DEFAULT_STAGE_TEMPLATES,
+            ...(raw.stageTemplates || {}),
+          },
+        };
+      }
+    } catch (e: any) {
+      this.logger.warn(`Failed to load followup_settings.json: ${e.message}`);
+    }
+    return defaults;
+  }
+
+  getConfig(): FollowupCampaignConfig {
+    return this.config;
+  }
+
+  updateConfig(partial: Partial<FollowupCampaignConfig>): FollowupCampaignConfig {
+    this.config = {
+      ...this.config,
+      ...partial,
+      stageTemplates: {
+        ...this.config.stageTemplates,
+        ...(partial.stageTemplates || {}),
+      },
+    };
+    try {
+      fs.writeFileSync(this.configFilePath, JSON.stringify(this.config, null, 2), 'utf8');
+    } catch (e: any) {
+      this.logger.warn(`Failed to save followup_settings.json: ${e.message}`);
+    }
+    return this.config;
+  }
+
+  getIsRunning(): boolean {
+    return this.isRunning;
+  }
+
+  triggerBackgroundRun(): { started: boolean; isRunning: boolean; message: string } {
+    if (this.isRunning) {
+      return {
+        started: false,
+        isRunning: true,
+        message: 'Follow-up campaign dispatch is already running in background.',
+      };
+    }
+    setImmediate(() => {
+      this.runFollowupCycle().catch((err) =>
+        this.logger.error(`Background follow-up cycle failed: ${err.message}`),
+      );
+    });
+    return {
+      started: true,
+      isRunning: true,
+      message: 'Follow-up dispatch started in background with campaign templates & anti-ban pacing.',
+    };
+  }
 
   onModuleInit() {
     if (!this.mongoService.isConfigured()) {
@@ -160,6 +283,36 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
     }
   }
 
+  private renderStageTemplate(
+    stage: FollowupStage,
+    leadName: string,
+    service: string,
+    company: string,
+  ): string {
+    const rawTemplate =
+      this.config.stageTemplates?.[stage] || DEFAULT_STAGE_TEMPLATES[stage];
+    let rendered = rawTemplate
+      .replace(/\{\{1\}\}/g, leadName)
+      .replace(/\{\{name\}\}/gi, leadName)
+      .replace(/\{\{service\}\}/gi, service)
+      .replace(/\{\{company\}\}/gi, company);
+
+    if (this.config.spintaxEnabled !== false) {
+      if (typeof (this.baileysService as any).resolveSpintax === 'function') {
+        rendered = this.baileysService.resolveSpintax(rendered);
+      } else {
+        const spintaxRegex = /\{([^{}]+)\}/g;
+        while (spintaxRegex.test(rendered)) {
+          rendered = rendered.replace(spintaxRegex, (_, choices) => {
+            const options = choices.split('|');
+            return options[Math.floor(Math.random() * options.length)];
+          });
+        }
+      }
+    }
+    return rendered;
+  }
+
   async generateStageMessage(
     lead: SalesBusterLead,
     org: SalesBusterOrg,
@@ -170,18 +323,17 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
     const service = lead.service?.trim() || 'our services';
     const company = org.aiSettings?.companyName || org.name || 'Petsfolio';
 
-    const fallbackMap: Record<FollowupStage, string> = {
-      new_lead: `Hi ${leadName}! Thank you for reaching out to ${company} regarding *${service}*. How can we help you today?`,
-      not_attended: `Hi ${leadName}, we noticed we missed connecting with you earlier about *${service}* at ${company}. Are you still looking for assistance?`,
-      followup: `Hi ${leadName}, just following up as scheduled regarding *${service}* with ${company}. Let us know a good time to connect!`,
-      not_responding: `Hi ${leadName}, checking in (follow-up #${attemptNumber}) regarding your *${service}* enquiry with ${company}. Reply anytime if you'd like details!`,
-      marketing_drip: `Hi ${leadName}! Sharing a quick update from ${company} on *${service}* and our latest offers. Reply here if you'd like us to share details!`,
-    };
+    const templateText = this.renderStageTemplate(stage, leadName, service, company);
+
+    // Campaign-style Template Mode: send exact Petsfolio Spintax template directly
+    if (this.config.mode === 'TEMPLATE') {
+      return templateText;
+    }
 
     const geminiKey =
       process.env.GEMINI_API_KEY || decryptSalesBusterKey(org.aiSettings?.geminiApiKey);
     if (!geminiKey) {
-      return formatWhatsAppReplyText(fallbackMap[stage]);
+      return formatWhatsAppReplyText(templateText);
     }
 
     try {
@@ -235,9 +387,9 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
         { timeout: 8000 },
       );
       const aiText = res.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-      return formatWhatsAppReplyText(aiText || fallbackMap[stage]);
+      return formatWhatsAppReplyText(aiText || templateText);
     } catch {
-      return formatWhatsAppReplyText(fallbackMap[stage]);
+      return formatWhatsAppReplyText(templateText);
     }
   }
 
@@ -260,6 +412,7 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
       failedCount: 0,
       skippedCount: 0,
     };
+    let sentSinceCooldown = 0;
 
     try {
       const orgs = await this.mongoService.fetchActiveOrganizations();
@@ -270,9 +423,31 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
         for (const lead of leads) {
           summary.evaluatedLeads++;
           const outcome = await this.processSingleLead(lead, org);
-          if (outcome === 'SENT') summary.sentCount++;
-          else if (outcome === 'FAILED') summary.failedCount++;
-          else summary.skippedCount++;
+          if (outcome === 'SENT') {
+            summary.sentCount++;
+            sentSinceCooldown++;
+
+            // Coffee break cooldown (same as Campaigns)
+            const cooldownAfter = this.config.batchCooldownAfter || 15;
+            if (sentSinceCooldown >= cooldownAfter) {
+              const breakSec = Math.max(60, this.config.batchCooldownSec || 300);
+              this.logger.log(
+                `☕ Follow-up Anti-Ban Cooldown: Sent ${sentSinceCooldown} messages. Taking a ${Math.round(breakSec / 60)}-minute coffee break (${breakSec}s)...`,
+              );
+              sentSinceCooldown = 0;
+              await new Promise((r) => setTimeout(r, breakSec * 1000));
+            } else {
+              // 25-30s Box-Muller Gaussian pacing between follow-ups (same as Campaigns)
+              const baseMean = Math.max(18, this.config.delayIntervalSec || 28);
+              const gaussianDelaySec = getGaussianJitter(baseMean, 6, 18, 65);
+              this.logger.log(`⏳ Follow-up Anti-Ban Pacing: Waiting ${gaussianDelaySec}s before next lead...`);
+              await new Promise((r) => setTimeout(r, gaussianDelaySec * 1000));
+            }
+          } else if (outcome === 'FAILED') {
+            summary.failedCount++;
+          } else {
+            summary.skippedCount++;
+          }
         }
       }
     } finally {
@@ -315,7 +490,30 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
     const nextAttempt = (existingState?.attemptCount || 0) + 1;
     const messageText = await this.generateStageMessage(lead, org, stage, nextAttempt);
 
-    const sendRes = await this.baileysService.sendRealMessage(phone, messageText);
+    const buttons =
+      this.config.buttonEnabled !== false
+        ? [
+            {
+              id: 'btn-interactive',
+              type: 'QUICK_REPLY',
+              text: this.config.buttonText || 'WhatsApp Now',
+              value: this.config.buttonValue || '917997887788',
+            },
+          ]
+        : [];
+    const preferredSender =
+      this.config.dispatchType === 'MULTI_NUMBER_POOL' ||
+      this.config.senderNumber === 'MULTI_NUMBER_POOL'
+        ? 'AUTO'
+        : this.config.senderNumber;
+
+    const sendRes = await this.baileysService.sendRealMessage(
+      phone,
+      messageText,
+      buttons,
+      undefined,
+      preferredSender,
+    );
 
     const workflow = org.workflowSettings || {};
     const maxNotResponding = workflow.notRespondingMaxFollowups || 5;
@@ -392,19 +590,45 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
 
   async getReports(stage?: string, limit = 100) {
     const where = stage && stage !== 'ALL' ? { stage } : {};
-    const [reports, counts] = await Promise.all([
-      this.prisma.followupDispatchReport.findMany({
-        where,
-        orderBy: { sentAt: 'desc' },
-        take: Math.min(limit, 500),
-      }),
-      this.prisma.followupDispatchReport.groupBy({
-        by: ['stage', 'deliveryStatus'],
-        _count: { _all: true },
-      }),
-    ]);
+    const reports = await this.prisma.followupDispatchReport.findMany({
+      where,
+      orderBy: { sentAt: 'desc' },
+      take: Math.min(limit, 500),
+    });
+
+    // Sync real delivery & read receipts from Baileys sockets
+    const receipts =
+      typeof (this.baileysService as any).getMessageStatuses === 'function'
+        ? this.baileysService.getMessageStatuses()
+        : null;
+
+    if (receipts) {
+      for (const r of reports) {
+        if (r.providerMessageId && receipts.has(r.providerMessageId)) {
+          const item = receipts.get(r.providerMessageId)!;
+          if (
+            (item.status === 'DELIVERED' && r.deliveryStatus === 'SENT') ||
+            (item.status === 'READ' && r.deliveryStatus !== 'READ')
+          ) {
+            r.deliveryStatus = item.status;
+            this.prisma.followupDispatchReport
+              .update({
+                where: { id: r.id },
+                data: { deliveryStatus: item.status },
+              })
+              .catch(() => {});
+          }
+        }
+      }
+    }
+
+    const counts = await this.prisma.followupDispatchReport.groupBy({
+      by: ['stage', 'deliveryStatus'],
+      _count: { _all: true },
+    });
 
     return {
+      isRunning: this.isRunning,
       reports,
       summary: counts.map((c) => ({
         stage: c.stage,

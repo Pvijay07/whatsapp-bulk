@@ -183,6 +183,7 @@ test('AI Auto Followup uses Qdrant KB, aiSettings, chat history, and WhatsApp fo
 
   try {
     const { service } = createHarness();
+    service.config.mode = 'AI_PLUS_TEMPLATE';
     const org = {
       _id: 'org_kb_1',
       name: 'Petsfolio',

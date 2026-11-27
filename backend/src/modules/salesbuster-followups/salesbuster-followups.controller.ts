@@ -1,7 +1,10 @@
-import { Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { SalesBusterFollowupsService } from './salesbuster-followups.service';
+import {
+  FollowupCampaignConfig,
+  SalesBusterFollowupsService,
+} from './salesbuster-followups.service';
 import { SalesBusterMongoService } from './salesbuster-mongo.service';
 
 @ApiTags('SalesBuster Followups')
@@ -37,6 +40,19 @@ export class SalesBusterFollowupsController {
     return { states };
   }
 
+  @Get('config')
+  getConfig() {
+    return this.followupsService.getConfig();
+  }
+
+  @Post('config')
+  updateConfig(@Body() body: Partial<FollowupCampaignConfig>) {
+    return {
+      success: true,
+      config: this.followupsService.updateConfig(body),
+    };
+  }
+
   @Post('run-now')
   async runNow() {
     if (!this.mongoService.isConfigured()) {
@@ -45,7 +61,7 @@ export class SalesBusterFollowupsController {
         message: 'SALESBUSTER_MONGO_URI is not configured in backend/.env',
       };
     }
-    const result = await this.followupsService.runFollowupCycle();
+    const result = this.followupsService.triggerBackgroundRun();
     return { success: true, ...result };
   }
 }

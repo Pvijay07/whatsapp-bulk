@@ -1,6 +1,17 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { apiClient } from '../api';
-import { Bot, RefreshCw, Play, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
+import {
+  Bot,
+  RefreshCw,
+  Play,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
+  Sliders,
+  Save,
+  Smartphone,
+  Sparkles,
+} from 'lucide-react';
 
 interface DispatchReport {
   id: string;
@@ -22,6 +33,27 @@ interface SummaryItem {
   count: number;
 }
 
+type FollowupStageKey =
+  | 'new_lead'
+  | 'not_attended'
+  | 'followup'
+  | 'not_responding'
+  | 'marketing_drip';
+
+interface FollowupConfig {
+  mode: 'TEMPLATE' | 'AI_PLUS_TEMPLATE';
+  dispatchType: 'MULTI_NUMBER_POOL' | 'DEDICATED_NUMBER';
+  senderNumber: string;
+  delayIntervalSec: number;
+  batchCooldownAfter: number;
+  batchCooldownSec: number;
+  spintaxEnabled: boolean;
+  buttonEnabled: boolean;
+  buttonText: string;
+  buttonValue: string;
+  stageTemplates: Record<FollowupStageKey, string>;
+}
+
 const STAGE_LABELS: Record<string, string> = {
   new_lead: 'New Lead Auto Msg',
   not_attended: 'Not Attended (>24h)',
@@ -30,14 +62,24 @@ const STAGE_LABELS: Record<string, string> = {
   marketing_drip: '15-Day Marketing',
 };
 
+const PETSFOLIO_MASTER_SPINTAX =
+  "{Hi|Hello|Dear} Pet Parent! {🐾|🐶|❤️|🐕}\n{Looking for Walking, Grooming, Training or Pet Sitting services? Book your pet's favourite service with Petsfolio today!|Give your furry friend the care they deserve with Petsfolio. 📲 Explore our services now!|Busy with your daily schedule? Petsfolio is here to take care of your furry friend. 🐾 Book your service today!|From daily walks to grooming, training and sitting, Petsfolio makes pet care easier. 📲 Book Now!|Happy pets begin with quality care. Discover convenient pet care services with Petsfolio. 📲 Open the Petsfolio App & Book Today!}";
+
 export const FollowupReportsView: React.FC = () => {
   const [reports, setReports] = useState<DispatchReport[]>([]);
   const [summary, setSummary] = useState<SummaryItem[]>([]);
   const [mongoConfigured, setMongoConfigured] = useState<boolean>(true);
+  const [isRunning, setIsRunning] = useState<boolean>(false);
   const [stageFilter, setStageFilter] = useState<string>('ALL');
   const [loading, setLoading] = useState<boolean>(false);
   const [running, setRunning] = useState<boolean>(false);
   const [runStatus, setRunStatus] = useState<string>('');
+
+  const [showSettings, setShowSettings] = useState<boolean>(false);
+  const [config, setConfig] = useState<FollowupConfig | null>(null);
+  const [editingStage, setEditingStage] = useState<FollowupStageKey>('new_lead');
+  const [savingConfig, setSavingConfig] = useState<boolean>(false);
+  const [configMsg, setConfigMsg] = useState<string>('');
 
   const fetchReports = useCallback(async () => {
     setLoading(true);
@@ -48,6 +90,7 @@ export const FollowupReportsView: React.FC = () => {
       setReports(res.data?.reports || []);
       setSummary(res.data?.summary || []);
       setMongoConfigured(Boolean(res.data?.mongoConfigured));
+      setIsRunning(Boolean(res.data?.isRunning));
     } catch (err: any) {
       console.error('Failed to load SalesBuster follow-up reports', err);
     } finally {
@@ -55,18 +98,37 @@ export const FollowupReportsView: React.FC = () => {
     }
   }, [stageFilter]);
 
+  const fetchConfig = useCallback(async () => {
+    try {
+      const res = await apiClient.get('/salesbuster-followups/config');
+      if (res.data) setConfig(res.data);
+    } catch {}
+  }, []);
+
   useEffect(() => {
     fetchReports();
-  }, [fetchReports]);
+    fetchConfig();
+  }, [fetchReports, fetchConfig]);
+
+  // Auto-poll every 4s while background follow-up dispatch is running
+  useEffect(() => {
+    if (!isRunning) return;
+    const timer = setInterval(() => {
+      fetchReports();
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [isRunning, fetchReports]);
 
   const handleRunNow = async () => {
     setRunning(true);
     setRunStatus('');
     try {
-      const res = await apiClient.post('/salesbuster-followups/run-now', {}, { timeout: 120000 });
+      const res = await apiClient.post('/salesbuster-followups/run-now', {}, { timeout: 30000 });
       if (res.data?.success) {
+        setIsRunning(Boolean(res.data.isRunning ?? true));
         setRunStatus(
-          `Synced ${res.data.evaluatedLeads} leads: ${res.data.sentCount} sent, ${res.data.failedCount} failed, ${res.data.skippedCount} skipped.`,
+          res.data.message ||
+            'Follow-up dispatch started in background with campaign templates & 25-30s anti-ban pacing.',
         );
         await fetchReports();
       } else {
@@ -79,8 +141,25 @@ export const FollowupReportsView: React.FC = () => {
     }
   };
 
+  const handleSaveConfig = async () => {
+    if (!config) return;
+    setSavingConfig(true);
+    setConfigMsg('');
+    try {
+      const res = await apiClient.post('/salesbuster-followups/config', config);
+      if (res.data?.success) {
+        setConfig(res.data.config);
+        setConfigMsg('✅ Campaign template & pacing settings saved.');
+      }
+    } catch (err: any) {
+      setConfigMsg(`❌ ${err.response?.data?.message || err.message}`);
+    } finally {
+      setSavingConfig(false);
+    }
+  };
+
   const totalSent = summary
-    .filter((s) => s.deliveryStatus === 'SENT')
+    .filter((s) => ['SENT', 'DELIVERED', 'READ'].includes(s.deliveryStatus))
     .reduce((acc, s) => acc + s.count, 0);
   const totalFailed = summary
     .filter((s) => s.deliveryStatus === 'FAILED')
@@ -92,10 +171,15 @@ export const FollowupReportsView: React.FC = () => {
         <div>
           <h2 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
             <Bot className="w-6 h-6 text-[#128C7E]" />
-            SalesBuster AI Follow-ups & 15-Day Marketing
+            SalesBuster Follow-ups & 15-Day Marketing
+            {isRunning && (
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 animate-pulse">
+                ● Dispatching in Background
+              </span>
+            )}
           </h2>
           <p className="text-sm text-slate-500 mt-1">
-            Reads leads from SalesBuster MongoDB (read-only), sends via Petsfolio WhatsApp, and stores reports in PostgreSQL.
+            Sends using Campaign Spintax Templates, Multi-SIM Pool rotation, 25–30s Gaussian pacing, Coffee Break & WhatsApp Now CTA.
           </p>
           {!mongoConfigured && (
             <p className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg mt-2 inline-block">
@@ -109,7 +193,7 @@ export const FollowupReportsView: React.FC = () => {
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <select
             value={stageFilter}
             onChange={(e) => setStageFilter(e.target.value)}
@@ -124,6 +208,14 @@ export const FollowupReportsView: React.FC = () => {
           </select>
 
           <button
+            onClick={() => setShowSettings((s) => !s)}
+            className="px-3 py-2 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm font-medium flex items-center gap-1.5 cursor-pointer"
+          >
+            <Sliders className="w-4 h-4 text-[#128C7E]" />
+            Templates & Pacing
+          </button>
+
+          <button
             onClick={fetchReports}
             disabled={loading}
             className="px-3 py-2 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm font-medium flex items-center gap-1.5 cursor-pointer"
@@ -134,14 +226,189 @@ export const FollowupReportsView: React.FC = () => {
 
           <button
             onClick={handleRunNow}
-            disabled={running}
+            disabled={running || isRunning}
             className="px-4 py-2 rounded-xl bg-[#128C7E] hover:bg-[#0e7266] text-white text-sm font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
           >
             <Play className="w-4 h-4" />
-            {running ? 'Running...' : 'Run Sync Now'}
+            {isRunning ? 'Dispatching...' : running ? 'Starting...' : 'Run Sync Now'}
           </button>
         </div>
       </div>
+
+      {/* Campaign-style Template & Anti-Ban Settings Panel */}
+      {showSettings && config && (
+        <div className="bg-white p-6 rounded-2xl border border-emerald-200 shadow-xs space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-[#128C7E]" />
+                Campaign-Style Follow-up Templates & Anti-Ban Configuration
+              </h3>
+              <p className="text-xs text-slate-500">
+                Use <code>{'{{1}}'}</code> for Lead Name, <code>{'{{service}}'}</code> for Service, and <code>{'{A|B}'}</code> for Spintax.
+              </p>
+            </div>
+            <button
+              onClick={handleSaveConfig}
+              disabled={savingConfig}
+              className="px-4 py-2 rounded-xl bg-[#075E54] hover:bg-[#128C7E] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <Save className="w-3.5 h-3.5" />
+              {savingConfig ? 'Saving...' : 'Save Settings'}
+            </button>
+          </div>
+
+          {configMsg && (
+            <div className="text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-lg">
+              {configMsg}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
+            <div>
+              <label className="font-bold text-slate-700 block mb-1">Dispatch Mode</label>
+              <select
+                value={config.mode}
+                onChange={(e) =>
+                  setConfig({ ...config, mode: e.target.value as 'TEMPLATE' | 'AI_PLUS_TEMPLATE' })
+                }
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-semibold"
+              >
+                <option value="TEMPLATE">Campaign Templates + Spintax (Recommended)</option>
+                <option value="AI_PLUS_TEMPLATE">Gemini AI + Template Fallback</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="font-bold text-slate-700 block mb-1">Sender Pool</label>
+              <select
+                value={config.dispatchType}
+                onChange={(e) =>
+                  setConfig({
+                    ...config,
+                    dispatchType: e.target.value as 'MULTI_NUMBER_POOL' | 'DEDICATED_NUMBER',
+                  })
+                }
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-semibold"
+              >
+                <option value="MULTI_NUMBER_POOL">Multi-Number Pool (Round-Robin)</option>
+                <option value="DEDICATED_NUMBER">Primary Number Only</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="font-bold text-slate-700 block mb-1">
+                Gap Between Messages (~{config.delayIntervalSec}s)
+              </label>
+              <input
+                type="number"
+                min={18}
+                max={90}
+                value={config.delayIntervalSec}
+                onChange={(e) =>
+                  setConfig({ ...config, delayIntervalSec: Number(e.target.value) || 28 })
+                }
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-semibold"
+              />
+            </div>
+
+            <div>
+              <label className="font-bold text-slate-700 block mb-1">
+                Coffee Break After (Msgs)
+              </label>
+              <input
+                type="number"
+                min={5}
+                max={50}
+                value={config.batchCooldownAfter}
+                onChange={(e) =>
+                  setConfig({ ...config, batchCooldownAfter: Number(e.target.value) || 15 })
+                }
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-semibold"
+              />
+            </div>
+          </div>
+
+          {/* WhatsApp Now CTA Link */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={config.buttonEnabled}
+                onChange={(e) => setConfig({ ...config, buttonEnabled: e.target.checked })}
+                className="w-4 h-4 accent-[#128C7E]"
+              />
+              <span className="font-bold text-slate-800">Attach "WhatsApp Now" Link</span>
+            </div>
+            <input
+              type="text"
+              value={config.buttonText}
+              onChange={(e) => setConfig({ ...config, buttonText: e.target.value })}
+              placeholder="Button Label (e.g. WhatsApp Now)"
+              className="px-3 py-1.5 border border-slate-300 rounded-lg bg-white"
+            />
+            <input
+              type="text"
+              value={config.buttonValue}
+              onChange={(e) => setConfig({ ...config, buttonValue: e.target.value })}
+              placeholder="Target Number (e.g. 917997887788)"
+              className="px-3 py-1.5 border border-slate-300 rounded-lg bg-white font-mono"
+            />
+          </div>
+
+          {/* Stage Template Editor */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {(Object.keys(STAGE_LABELS) as FollowupStageKey[]).map((st) => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => setEditingStage(st)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer ${
+                      editingStage === st
+                        ? 'bg-emerald-100 text-emerald-950 border-emerald-400'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    {STAGE_LABELS[st]}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  setConfig({
+                    ...config,
+                    stageTemplates: {
+                      ...config.stageTemplates,
+                      [editingStage]: PETSFOLIO_MASTER_SPINTAX,
+                    },
+                  })
+                }
+                className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-[11px] font-semibold cursor-pointer"
+              >
+                🐾 Load Petsfolio Master Spintax
+              </button>
+            </div>
+
+            <textarea
+              rows={4}
+              value={config.stageTemplates[editingStage] || ''}
+              onChange={(e) =>
+                setConfig({
+                  ...config,
+                  stageTemplates: {
+                    ...config.stageTemplates,
+                    [editingStage]: e.target.value,
+                  },
+                })
+              }
+              className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-[#128C7E] focus:outline-none"
+            />
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80">
@@ -162,7 +429,7 @@ export const FollowupReportsView: React.FC = () => {
           <div className="text-xs font-semibold text-slate-500 uppercase">Active Cadence</div>
           <div className="text-sm font-semibold text-slate-700 mt-2 flex items-center gap-2">
             <Clock className="w-4 h-4 text-[#128C7E]" />
-            PostgreSQL State + 15-Day Drip Active
+            Campaign Templates + 25–30s Pacing + Coffee Break
           </div>
         </div>
       </div>
@@ -172,7 +439,9 @@ export const FollowupReportsView: React.FC = () => {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase text-slate-500">
+                <th className="py-3 px-4 text-center w-12">S.No</th>
                 <th className="py-3 px-4">Lead</th>
+                <th className="py-3 px-4">Dispatched Through</th>
                 <th className="py-3 px-4">Stage</th>
                 <th className="py-3 px-4">Attempt</th>
                 <th className="py-3 px-4">Message</th>
@@ -183,16 +452,25 @@ export const FollowupReportsView: React.FC = () => {
             <tbody className="divide-y divide-slate-100 text-sm">
               {reports.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-10 text-center text-slate-400">
+                  <td colSpan={8} className="py-10 text-center text-slate-400">
                     {loading ? 'Loading PostgreSQL reports...' : 'No follow-up dispatch reports recorded yet.'}
                   </td>
                 </tr>
               ) : (
-                reports.map((r) => (
+                reports.map((r, idx) => (
                   <tr key={r.id} className="hover:bg-slate-50/70">
+                    <td className="py-3 px-4 text-center font-mono text-xs font-semibold text-slate-400">
+                      #{idx + 1}
+                    </td>
                     <td className="py-3 px-4">
                       <div className="font-semibold text-slate-900">{r.leadName || 'Lead'}</div>
-                      <div className="text-xs text-slate-500">{r.phone}</div>
+                      <div className="text-xs text-slate-500 font-mono">{r.phone}</div>
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="inline-flex items-center gap-1.5 font-mono text-xs font-semibold text-emerald-950 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
+                        <Smartphone className="w-3.5 h-3.5 text-emerald-600" />
+                        {r.senderNumber ? `+${r.senderNumber.replace(/^\+/, '')}` : 'Pool'}
+                      </span>
                     </td>
                     <td className="py-3 px-4">
                       <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700">
@@ -206,9 +484,11 @@ export const FollowupReportsView: React.FC = () => {
                     <td className="py-3 px-4">
                       <span
                         className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-                          r.deliveryStatus === 'SENT'
-                            ? 'bg-emerald-50 text-emerald-700'
-                            : 'bg-rose-50 text-rose-700'
+                          r.deliveryStatus === 'READ'
+                            ? 'bg-teal-50 text-teal-700 border border-teal-200'
+                            : r.deliveryStatus === 'DELIVERED' || r.deliveryStatus === 'SENT'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-rose-50 text-rose-700 border border-rose-200'
                         }`}
                       >
                         {r.deliveryStatus}
