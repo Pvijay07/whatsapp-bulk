@@ -64,4 +64,14 @@ export class SalesBusterFollowupsController {
     const result = this.followupsService.triggerBackgroundRun();
     return { success: true, ...result };
   }
+
+  @Post('stop')
+  stopNow() {
+    return this.followupsService.stopFollowupCycle();
+  }
+
+  @Post('clear')
+  async clearAll() {
+    return this.followupsService.clearFollowupData();
+  }
 }

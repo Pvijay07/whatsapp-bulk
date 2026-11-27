@@ -50,6 +50,7 @@ export type FollowupStage =
   | 'marketing_drip';
 
 export interface FollowupCampaignConfig {
+  autoPollingEnabled: boolean;
   mode: 'TEMPLATE' | 'AI_PLUS_TEMPLATE';
   dispatchType: 'MULTI_NUMBER_POOL' | 'DEDICATED_NUMBER';
   senderNumber: string;
@@ -81,6 +82,7 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
   private readonly logger = new Logger(SalesBusterFollowupsService.name);
   private pollTimer: NodeJS.Timeout | null = null;
   private isRunning = false;
+  private stopRequested = false;
   private readonly configFilePath: string;
   private config: FollowupCampaignConfig;
 
@@ -106,6 +108,7 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
 
   private loadConfig(): FollowupCampaignConfig {
     const defaults: FollowupCampaignConfig = {
+      autoPollingEnabled: false,
       mode: 'TEMPLATE',
       dispatchType: 'MULTI_NUMBER_POOL',
       senderNumber: 'MULTI_NUMBER_POOL',
@@ -169,6 +172,7 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
         message: 'Follow-up campaign dispatch is already running in background.',
       };
     }
+    this.stopRequested = false;
     setImmediate(() => {
       this.runFollowupCycle().catch((err) =>
         this.logger.error(`Background follow-up cycle failed: ${err.message}`),
@@ -181,6 +185,33 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
     };
   }
 
+  stopFollowupCycle(): { success: boolean; message: string } {
+    this.stopRequested = true;
+    if (this.config.autoPollingEnabled) {
+      this.updateConfig({ autoPollingEnabled: false });
+    }
+    this.logger.warn('🛑 Follow-up dispatch STOP requested by user. Halting loop & disabling auto-polling.');
+    return {
+      success: true,
+      message: 'Stop requested. Current cycle will halt and auto-polling is disabled.',
+    };
+  }
+
+  async clearFollowupData(): Promise<{ success: boolean; deletedReports: number; deletedStates: number }> {
+    const [delReports, delStates] = await Promise.all([
+      this.prisma.followupDispatchReport.deleteMany({}),
+      this.prisma.leadFollowupState.deleteMany({}),
+    ]);
+    this.logger.warn(
+      `🧹 Cleared SalesBuster follow-up data: ${delReports.count} reports, ${delStates.count} lead states removed.`,
+    );
+    return {
+      success: true,
+      deletedReports: delReports.count,
+      deletedStates: delStates.count,
+    };
+  }
+
   onModuleInit() {
     if (!this.mongoService.isConfigured()) {
       this.logger.log(
@@ -190,18 +221,26 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
     }
 
     const intervalMs = Number(process.env.SALESBUSTER_FOLLOWUP_POLL_MS || 5 * 60 * 1000);
-    this.logger.log(`Starting SalesBuster MongoDB follow-up scheduler (every ${Math.round(intervalMs / 1000)}s)`);
+    this.logger.log(
+      `SalesBuster MongoDB follow-up scheduler ready (Auto-Polling: ${this.config.autoPollingEnabled ? 'ON' : 'OFF (Manual Run Only)'})`,
+    );
 
-    setTimeout(() => {
-      this.runFollowupCycle().catch((err) =>
-        this.logger.error(`Initial follow-up cycle failed: ${err.message}`),
-      );
-    }, 15000);
+    if (this.config.autoPollingEnabled) {
+      setTimeout(() => {
+        if (this.config.autoPollingEnabled) {
+          this.runFollowupCycle().catch((err) =>
+            this.logger.error(`Initial follow-up cycle failed: ${err.message}`),
+          );
+        }
+      }, 15000);
+    }
 
     this.pollTimer = setInterval(() => {
-      this.runFollowupCycle().catch((err) =>
-        this.logger.error(`Scheduled follow-up cycle failed: ${err.message}`),
-      );
+      if (this.config.autoPollingEnabled && !this.isRunning) {
+        this.runFollowupCycle().catch((err) =>
+          this.logger.error(`Scheduled follow-up cycle failed: ${err.message}`),
+        );
+      }
     }, intervalMs);
   }
 
@@ -405,6 +444,7 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
     }
 
     this.isRunning = true;
+    this.stopRequested = false;
     const summary = {
       processedOrgs: 0,
       evaluatedLeads: 0,
@@ -419,13 +459,16 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
       summary.processedOrgs = orgs.length;
 
       for (const org of orgs) {
+        if (this.stopRequested) break;
         const leads = await this.mongoService.fetchEligibleLeads(org.tenantDbName);
         for (const lead of leads) {
+          if (this.stopRequested) break;
           summary.evaluatedLeads++;
           const outcome = await this.processSingleLead(lead, org);
           if (outcome === 'SENT') {
             summary.sentCount++;
             sentSinceCooldown++;
+            if (this.stopRequested) break;
 
             // Coffee break cooldown (same as Campaigns)
             const cooldownAfter = this.config.batchCooldownAfter || 15;

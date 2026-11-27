@@ -11,6 +11,8 @@ import {
   Save,
   Smartphone,
   Sparkles,
+  Square,
+  Trash2,
 } from 'lucide-react';
 
 interface DispatchReport {
@@ -158,6 +160,32 @@ export const FollowupReportsView: React.FC = () => {
     }
   };
 
+  const handleStopNow = async () => {
+    try {
+      const res = await apiClient.post('/salesbuster-followups/stop');
+      setIsRunning(false);
+      setRunStatus(res.data?.message || '🛑 Follow-up dispatch stopped.');
+      await fetchReports();
+    } catch (err: any) {
+      setRunStatus(err.response?.data?.message || err.message || 'Failed to stop.');
+    }
+  };
+
+  const handleClearData = async () => {
+    if (!window.confirm('Clear all SalesBuster follow-up reports and lead states from PostgreSQL?')) return;
+    try {
+      const res = await apiClient.post('/salesbuster-followups/clear');
+      if (res.data?.success) {
+        setRunStatus(
+          `🧹 Cleared ${res.data.deletedReports} reports and ${res.data.deletedStates} lead states.`,
+        );
+        await fetchReports();
+      }
+    } catch (err: any) {
+      setRunStatus(err.response?.data?.message || err.message || 'Failed to clear.');
+    }
+  };
+
   const totalSent = summary
     .filter((s) => ['SENT', 'DELIVERED', 'READ'].includes(s.deliveryStatus))
     .reduce((acc, s) => acc + s.count, 0);
@@ -224,13 +252,32 @@ export const FollowupReportsView: React.FC = () => {
             Refresh
           </button>
 
+          {isRunning ? (
+            <button
+              onClick={handleStopNow}
+              className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold flex items-center gap-1.5 cursor-pointer"
+            >
+              <Square className="w-4 h-4" />
+              Stop Dispatch
+            </button>
+          ) : (
+            <button
+              onClick={handleRunNow}
+              disabled={running}
+              className="px-4 py-2 rounded-xl bg-[#128C7E] hover:bg-[#0e7266] text-white text-sm font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+            >
+              <Play className="w-4 h-4" />
+              {running ? 'Starting...' : 'Run Sync Now'}
+            </button>
+          )}
+
           <button
-            onClick={handleRunNow}
-            disabled={running || isRunning}
-            className="px-4 py-2 rounded-xl bg-[#128C7E] hover:bg-[#0e7266] text-white text-sm font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+            onClick={handleClearData}
+            title="Clear all follow-up reports & states from PostgreSQL"
+            className="px-3 py-2 rounded-xl border border-rose-200 text-rose-700 hover:bg-rose-50 text-sm font-medium flex items-center gap-1.5 cursor-pointer"
           >
-            <Play className="w-4 h-4" />
-            {isRunning ? 'Dispatching...' : running ? 'Starting...' : 'Run Sync Now'}
+            <Trash2 className="w-4 h-4" />
+            Clear
           </button>
         </div>
       </div>
