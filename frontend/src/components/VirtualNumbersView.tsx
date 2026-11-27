@@ -424,7 +424,7 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({
               <div className="bg-white/5 border border-white/10 px-3.5 py-2 rounded-xl text-center">
                 <div className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">Pool Safe Quota</div>
                 <div className="text-base font-bold text-amber-300">
-                  {accounts.reduce((acc, a) => acc + (a.dailySentCount || 0), 0)} / {accounts.reduce((acc, a) => acc + (a.maxDailySafeCap || 25), 0)} Sent
+                  {accounts.reduce((acc, a) => acc + (a.dailySentCount || 0), 0)} / {accounts.reduce((acc, a) => acc + (a.maxDailySafeCap || 30), 0)} Sent
                 </div>
               </div>
             </div>
@@ -589,20 +589,20 @@ export const VirtualNumbersView: React.FC<VirtualNumbersViewProps> = ({
                     <div className="flex justify-between text-[10px] text-slate-500">
                       <span>Daily Safe Quota:</span>
                       <span className="font-semibold text-slate-700">
-                        {acc.dailySentCount || 0} / {acc.maxDailySafeCap || 25} sent today
+                        {acc.dailySentCount || 0} / {acc.maxDailySafeCap || 30} sent today
                       </span>
                     </div>
                     <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all ${
-                          (acc.dailySentCount || 0) >= (acc.maxDailySafeCap || 25)
+                          (acc.dailySentCount || 0) >= (acc.maxDailySafeCap || 30)
                             ? 'bg-rose-500'
-                            : (acc.dailySentCount || 0) >= (acc.maxDailySafeCap || 25) * 0.8
+                            : (acc.dailySentCount || 0) >= (acc.maxDailySafeCap || 30) * 0.8
                             ? 'bg-amber-500'
                             : 'bg-emerald-500'
                         }`}
                         style={{
-                          width: `${Math.min(100, Math.round(((acc.dailySentCount || 0) / (acc.maxDailySafeCap || 25)) * 100))}%`,
+                          width: `${Math.min(100, Math.round(((acc.dailySentCount || 0) / (acc.maxDailySafeCap || 30)) * 100))}%`,
                         }}
                       />
                     </div>

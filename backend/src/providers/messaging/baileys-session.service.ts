@@ -78,44 +78,41 @@ export function calculateWarmupMetrics(createdAtStr: string): {
   const daysActive = diffDays + 1; // 1st day = 1
 
   if (daysActive <= 2) {
-    // Day 1–2: Internal Mutual Chatting & Auto-Warmer loop
+    // Day 1–2: 30 contacts per SIM limit with 25-30s pacing
     return {
       daysActive,
       warmupStage: 'WARMING_UP',
-      maxDailySafeCap: 10,
-      recommendedDelaySec: 75,
-      stageName: 'Day 1–2: Peer-to-Peer Warmup',
-      stageDescription: 'Internal mutual chatting between pool numbers. Safe outbound cold limit: 10/day.',
+      maxDailySafeCap: 30,
+      recommendedDelaySec: 28,
+      stageName: 'Day 1–2: Initial Pool (30/SIM)',
+      stageDescription: 'Configured for 30 contacts per SIM with 25–30s Gaussian pacing & coffee breaks.',
     };
   } else if (daysActive <= 5) {
-    // Day 3–5: Low-Volume Outbound (15–25 msgs/day, 45–90s delays)
     return {
       daysActive,
       warmupStage: 'MATURING',
-      maxDailySafeCap: 25,
-      recommendedDelaySec: 60,
-      stageName: 'Day 3–5: Low-Volume Outbound',
-      stageDescription: 'Limit to 15–25 msgs/day with 45–90s delays. Always prompt for a reply first.',
+      maxDailySafeCap: 30,
+      recommendedDelaySec: 28,
+      stageName: 'Day 3–5: Maturing (30/SIM)',
+      stageDescription: 'Configured for 30 contacts per SIM with 25–30s delays across rotated pool.',
     };
   } else if (daysActive <= 7) {
-    // Day 6–7: Maturing Transition (40–60 msgs/day, 30–60s delays)
     return {
       daysActive,
       warmupStage: 'MATURING',
-      maxDailySafeCap: 50,
-      recommendedDelaySec: 40,
-      stageName: 'Day 6–7: Maturing Volume',
-      stageDescription: '40–50 msgs/day with 30–60s delays across rotated pool.',
+      maxDailySafeCap: 30,
+      recommendedDelaySec: 28,
+      stageName: 'Day 6–7: Active Pool (30/SIM)',
+      stageDescription: '30 contacts per SIM with 25–30s delays across rotated pool.',
     };
   } else {
-    // Day 7+: Scaled Rotation (80–120 msgs/day per SIM, 1,000+ msgs/day across 10 SIMs)
     return {
       daysActive,
       warmupStage: 'WARMED_UP',
-      maxDailySafeCap: 100,
+      maxDailySafeCap: 30,
       recommendedDelaySec: 28,
-      stageName: 'Day 7+: Scaled Rotation',
-      stageDescription: 'Full velocity: 80–120 msgs/day per SIM. 10 SIMs = 1,000+ msgs/day safely.',
+      stageName: 'Day 7+: Scaled Rotation (30/SIM)',
+      stageDescription: '30 contacts per SIM per day (e.g. 3 SIMs = 90 contacts/day safely).',
     };
   }
 }

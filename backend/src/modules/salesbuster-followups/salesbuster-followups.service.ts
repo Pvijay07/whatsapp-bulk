@@ -51,6 +51,7 @@ export type FollowupStage =
 
 export interface FollowupCampaignConfig {
   autoPollingEnabled: boolean;
+  maxPerSimPerCycle: number;
   mode: 'TEMPLATE' | 'AI_PLUS_TEMPLATE';
   dispatchType: 'MULTI_NUMBER_POOL' | 'DEDICATED_NUMBER';
   senderNumber: string;
@@ -109,6 +110,7 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
   private loadConfig(): FollowupCampaignConfig {
     const defaults: FollowupCampaignConfig = {
       autoPollingEnabled: false,
+      maxPerSimPerCycle: 30,
       mode: 'TEMPLATE',
       dispatchType: 'MULTI_NUMBER_POOL',
       senderNumber: 'MULTI_NUMBER_POOL',
@@ -453,16 +455,23 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
       skippedCount: 0,
     };
     let sentSinceCooldown = 0;
+    const onlineSessionsCount = Math.max(
+      1,
+      typeof (this.baileysService as any).getOnlineSessions === 'function'
+        ? this.baileysService.getOnlineSessions().length
+        : 1,
+    );
+    const maxLeadsThisCycle = onlineSessionsCount * (this.config.maxPerSimPerCycle || 30);
 
     try {
       const orgs = await this.mongoService.fetchActiveOrganizations();
       summary.processedOrgs = orgs.length;
 
       for (const org of orgs) {
-        if (this.stopRequested) break;
+        if (this.stopRequested || summary.sentCount >= maxLeadsThisCycle) break;
         const leads = await this.mongoService.fetchEligibleLeads(org.tenantDbName);
         for (const lead of leads) {
-          if (this.stopRequested) break;
+          if (this.stopRequested || summary.sentCount >= maxLeadsThisCycle) break;
           summary.evaluatedLeads++;
           const outcome = await this.processSingleLead(lead, org);
           if (outcome === 'SENT') {
