@@ -107,9 +107,9 @@ export class ContactsService {
             const rawPhone = lead.phoneNormalized || lead.phone || '';
             if (!rawPhone) continue;
             const phone = this.normalizePhoneNumber(rawPhone);
-            const createdDate = lead.createdAt
-              ? new Date(lead.createdAt).toLocaleDateString('en-IN')
-              : new Date().toLocaleDateString('en-IN');
+            const createdIso = lead.createdAt
+              ? new Date(lead.createdAt).toISOString()
+              : new Date().toISOString();
             const createdTime = lead.createdAt
               ? new Date(lead.createdAt).toLocaleTimeString('en-IN', {
                   hour: '2-digit',
@@ -124,7 +124,7 @@ export class ContactsService {
               phoneNumber: phone,
               optInConsent: !lead.isOptedOut,
               isSuppressed: String(lead.status || '').toUpperCase() === 'DND',
-              createdAt: createdDate,
+              createdAt: createdIso,
               metadata: {
                 tag: lead.folder || 'SalesBuster CRM',
                 service: lead.service || lead.folder || 'SalesBuster Lead',

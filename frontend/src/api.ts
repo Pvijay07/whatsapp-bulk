@@ -105,7 +105,12 @@ export class DynamicStoreManager {
           enquiredTime: c.metadata?.enquiredTime || '5:18 PM',
           isSuppressed: c.isSuppressed || false,
           optInConsent: true,
-          createdAt: c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-IN') : 'Recent',
+          createdAt: (() => {
+            if (!c.createdAt) return 'Recent';
+            const d = new Date(c.createdAt);
+            if (!isNaN(d.getTime())) return d.toLocaleDateString('en-IN');
+            return String(c.createdAt);
+          })(),
         }));
         saveToStorage(STORAGE_KEYS.CONTACTS, formatted);
         return formatted;
