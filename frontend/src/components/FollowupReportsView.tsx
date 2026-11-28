@@ -487,8 +487,8 @@ export const FollowupReportsView: React.FC = () => {
                 }
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-semibold"
               >
-                <option value="TEMPLATE">Campaign Templates + Spintax (Recommended)</option>
-                <option value="AI_PLUS_TEMPLATE">Gemini AI + Template Fallback</option>
+                <option value="AI_PLUS_TEMPLATE">Auto AI Follow-up + Template & CTA (Recommended)</option>
+                <option value="TEMPLATE">Static Campaign Templates + Spintax Only</option>
               </select>
             </div>
 

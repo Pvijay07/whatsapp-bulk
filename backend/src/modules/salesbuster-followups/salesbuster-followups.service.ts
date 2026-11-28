@@ -111,7 +111,7 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
     const defaults: FollowupCampaignConfig = {
       autoPollingEnabled: false,
       maxPerSimPerCycle: 30,
-      mode: 'TEMPLATE',
+      mode: 'AI_PLUS_TEMPLATE',
       dispatchType: 'MULTI_NUMBER_POOL',
       senderNumber: 'MULTI_NUMBER_POOL',
       delayIntervalSec: 28,
@@ -505,6 +505,14 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
         org.aiSettings?.customInstructions ||
         `1. HUMAN TONE: Communicate warmly, politely, and conversationally. Never say you are an AI or bot.\n2. PACING: Ask at most 1-2 questions.\n3. WHATSAPP FORMATTING: Keep messages short (maximum 50-60 words), clean bullet points, bold key terms (*term*), and emojis.`;
 
+      const stageContextMap: Record<FollowupStage, string> = {
+        new_lead: 'AUTO MSG for a New Lead: welcome the customer warmly and ask how we can assist with their pet care need.',
+        not_attended: 'AUTO MSG for Not Attended (>24h): polite check-in noting we missed connecting earlier and offering assistance.',
+        followup: 'AI Follow-up with Client for a scheduled Follow-up today: friendly reminder and next step to book or connect.',
+        not_responding: `AI Follow-up Chat for Not Responding lead (attempt #${attemptNumber} of 5 over 15 days): brief, non-pushy check-in.`,
+        marketing_drip: '15-Day Marketing Follow-up for Future Lead: share helpful pet care service update/offer.',
+      };
+
       const prompt = [
         `You are a ${org.aiSettings?.agentPersona || 'friendly, human sales representative'} for "${company}".`,
         org.aiSettings?.businessDescription ? `BUSINESS DESCRIPTION:\n${org.aiSettings.businessDescription}` : '',
@@ -512,7 +520,8 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
         ragContext ? `KNOWLEDGE BASE CONTEXT:\n${ragContext}` : '',
         historyBlock,
         `INSTRUCTIONS:\n${customRules}`,
-        `TASK: Write a WhatsApp ${stage} message (attempt #${attemptNumber}) for customer "${leadName}" interested in "${service}". Output ONLY the WhatsApp message text.`,
+        `REFERENCE TEMPLATE STYLE:\n${templateText}`,
+        `TASK: Write an Auto AI WhatsApp ${stageContextMap[stage]} Customer: "${leadName}", interested in: "${service}". Output ONLY the WhatsApp message text.`,
       ]
         .filter(Boolean)
         .join('\n\n');
