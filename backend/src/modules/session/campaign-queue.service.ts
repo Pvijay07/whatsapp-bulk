@@ -513,4 +513,21 @@ export class CampaignQueueService implements OnModuleInit {
     this.logger.log(`Campaign ${id} cancelled by user.`);
     return { success: true, campaignId: id, status: 'CANCELLED' };
   }
+
+  /**
+   * Permanently deletes a campaign from the queue store
+   */
+  deleteCampaign(id: string) {
+    const campaign = this.campaigns.get(id);
+    if (!campaign) {
+      throw new NotFoundException(`Campaign ${id} not found.`);
+    }
+    if (campaign.status === 'SENDING' || campaign.status === 'QUEUED') {
+      campaign.status = 'CANCELLED';
+    }
+    this.campaigns.delete(id);
+    this.persistToDisk();
+    this.logger.log(`Campaign ${id} deleted by user.`);
+    return { success: true, campaignId: id };
+  }
 }

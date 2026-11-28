@@ -193,6 +193,20 @@ export class DynamicStoreManager {
     return true;
   }
 
+  // Bulk delete selected contacts from PostgreSQL
+  async bulkDeleteContacts(ids: string[]): Promise<boolean> {
+    if (!ids || ids.length === 0) return true;
+    try {
+      await apiClient.post('/contacts/bulk-delete', { ids });
+    } catch (e) {
+      console.warn('Backend bulk delete contacts failed:', e);
+    }
+    const idSet = new Set(ids);
+    const current = loadFromStorage<Contact[]>(STORAGE_KEYS.CONTACTS, []);
+    saveToStorage(STORAGE_KEYS.CONTACTS, current.filter((c) => !idSet.has(c.id)));
+    return true;
+  }
+
   // Clear all contacts from PostgreSQL
   async clearAllContacts(): Promise<boolean> {
     try {
@@ -688,6 +702,16 @@ export class DynamicStoreManager {
   async cancelQueuedCampaign(campaignId: string): Promise<boolean> {
     try {
       const res = await apiClient.post(`/session/queue-campaigns/${campaignId}/cancel`);
+      return res.data?.success;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Delete campaign from server
+  async deleteQueuedCampaign(campaignId: string): Promise<boolean> {
+    try {
+      const res = await apiClient.delete(`/session/queue-campaigns/${campaignId}`);
       return res.data?.success;
     } catch (e) {
       return false;

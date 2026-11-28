@@ -15,6 +15,7 @@ import {
   Phone,
   Smartphone,
   Layers,
+  Trash2,
 } from "lucide-react";
 
 interface DeliveryReportsViewProps {
@@ -23,6 +24,7 @@ interface DeliveryReportsViewProps {
   onPauseCampaign?: (campaignId: string) => void;
   onResumeCampaign?: (campaignId: string) => void;
   onCancelCampaign?: (campaignId: string) => void;
+  onDeleteCampaign?: (campaignId: string) => void;
 }
 
 export const DeliveryReportsView: React.FC<DeliveryReportsViewProps> = ({
@@ -31,6 +33,7 @@ export const DeliveryReportsView: React.FC<DeliveryReportsViewProps> = ({
   onPauseCampaign,
   onResumeCampaign,
   onCancelCampaign,
+  onDeleteCampaign,
 }) => {
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>(
     campaigns[0]?.id || "",
@@ -271,6 +274,20 @@ export const DeliveryReportsView: React.FC<DeliveryReportsViewProps> = ({
                   >
                     <AlertCircle className="w-3.5 h-3.5" />
                     Cancel
+                  </button>
+                )}
+                {onDeleteCampaign && (
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`Delete campaign "${activeCampaign.name}"?`)) {
+                        onDeleteCampaign(activeCampaign.id);
+                      }
+                    }}
+                    className="px-2.5 py-1 text-xs font-semibold bg-white text-rose-700 hover:bg-rose-50 border border-rose-200 rounded-lg flex items-center gap-1 transition shadow-xs"
+                    title="Delete campaign"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete
                   </button>
                 )}
               </div>

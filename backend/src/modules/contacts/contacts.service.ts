@@ -246,6 +246,37 @@ export class ContactsService {
   }
 
   /**
+   * Bulk deletes selected contacts by IDs from PostgreSQL & JSON fallback.
+   */
+  async bulkDelete(organizationId: string, ids: string[]) {
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return { success: true, count: 0 };
+    }
+    const orgId = organizationId || (await this.getOrCreateDefaultOrgId());
+    let deletedCount = 0;
+
+    try {
+      const res = await this.prisma.contact.deleteMany({
+        where: { id: { in: ids }, organizationId: orgId },
+      });
+      deletedCount = res.count;
+    } catch (e) {}
+
+    const idSet = new Set(ids);
+    const file = this.getStorageFile();
+    if (fs.existsSync(file)) {
+      try {
+        const items = JSON.parse(fs.readFileSync(file, 'utf8'));
+        const filtered = items.filter((x: any) => !idSet.has(x.id));
+        if (!deletedCount) deletedCount = items.length - filtered.length;
+        fs.writeFileSync(file, JSON.stringify(filtered, null, 2), 'utf8');
+      } catch (e) {}
+    }
+
+    return { success: true, count: deletedCount };
+  }
+
+  /**
    * Clears all contacts from PostgreSQL.
    */
   async clearAll(organizationId: string) {

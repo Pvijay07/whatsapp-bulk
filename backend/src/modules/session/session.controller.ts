@@ -295,4 +295,13 @@ export class SessionController {
   async cancelCampaign(@Param('id') id: string) {
     return this.queueService.cancelCampaign(id);
   }
+
+  /**
+   * Deletes a campaign from the server queue store.
+   */
+  @Delete('queue-campaigns/:id')
+  @HttpCode(HttpStatus.OK)
+  async deleteCampaign(@Param('id') id: string) {
+    return this.queueService.deleteCampaign(id);
+  }
 }

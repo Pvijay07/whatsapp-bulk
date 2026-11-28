@@ -31,6 +31,7 @@ interface ContactsViewProps {
   onImportCsv: (csvContent: string) => void;
   onGroupGrabberExtract?: (extractedContacts: Array<{ name: string; phoneNumber: string; tag: string }>) => void;
   onDeleteContact?: (id: string) => void;
+  onBulkDeleteContacts?: (ids: string[]) => void;
   onUpdateContact?: (contact: Contact) => void;
 }
 
@@ -41,6 +42,7 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
   onImportCsv,
   onGroupGrabberExtract,
   onDeleteContact,
+  onBulkDeleteContacts,
   onUpdateContact,
 }) => {
   // Search & Filter States
@@ -48,6 +50,7 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
   const [selectedService, setSelectedService] = useState('ALL');
   const [selectedRep, setSelectedRep] = useState('ALL');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
+  const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set());
 
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
@@ -416,9 +419,47 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
         </div>
       </div>
 
-      {/* Matching Result Count */}
-      <div className="text-xs text-slate-500 font-medium px-1">
-        Showing 1-{Math.min(filteredContacts.length, 10)} of {filteredContacts.length} matching leads
+      {/* Matching Result Count & Bulk Selection Action Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
+        <div className="text-xs text-slate-500 font-medium">
+          Showing 1-{Math.min(filteredContacts.length, 10)} of {filteredContacts.length} matching leads
+        </div>
+        {selectedContactIds.size > 0 && (
+          <div className="flex items-center gap-2 bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-xl">
+            <span className="text-xs font-bold text-rose-900">
+              {selectedContactIds.size} selected
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `Delete ${selectedContactIds.size} selected contact(s) permanently?`,
+                  )
+                ) {
+                  const ids = Array.from(selectedContactIds);
+                  if (onBulkDeleteContacts) {
+                    onBulkDeleteContacts(ids);
+                  } else if (onDeleteContact) {
+                    ids.forEach((id) => onDeleteContact(id));
+                  }
+                  setSelectedContactIds(new Set());
+                }
+              }}
+              className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Delete Selected ({selectedContactIds.size})
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedContactIds(new Set())}
+              className="px-2 py-1 text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer"
+            >
+              Clear
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Leads Table Container */}
@@ -428,6 +469,24 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
             {/* Table Header */}
             <thead className="bg-[#fcfdfe] border-b border-slate-200/80 text-[11px] font-bold uppercase tracking-wider text-slate-500">
               <tr>
+                <th className="px-4 py-3.5 w-10">
+                  <input
+                    type="checkbox"
+                    checked={
+                      filteredContacts.length > 0 &&
+                      filteredContacts.every((c) => selectedContactIds.has(c.id))
+                    }
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedContactIds(new Set(filteredContacts.map((c) => c.id)));
+                      } else {
+                        setSelectedContactIds(new Set());
+                      }
+                    }}
+                    className="w-4 h-4 accent-[#00b493] rounded cursor-pointer"
+                    title="Select all visible contacts"
+                  />
+                </th>
                 <th className="px-5 py-3.5">CLIENT & CONTACT</th>
                 <th className="px-5 py-3.5">SERVICE</th>
                 <th className="px-5 py-3.5">SOURCE</th>
@@ -442,7 +501,7 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
             <tbody className="divide-y divide-slate-100">
               {filteredContacts.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
+                  <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
                     <Users className="w-10 h-10 mx-auto mb-2 text-slate-300" />
                     <p className="font-semibold text-slate-600">No leads match the selected filters</p>
                     <p className="text-xs mt-1">Try resetting search or clicking "+ Add New Lead"</p>
@@ -457,9 +516,26 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
                   const statusName = contact.status || 'New';
                   const enquiredDate = contact.createdAt || 'Nov 4, 2026';
                   const enquiredTime = contact.enquiredTime || '5:10 PM';
+                  const isChecked = selectedContactIds.has(contact.id);
 
                   return (
-                    <tr key={contact.id} className="hover:bg-slate-50/70 transition-colors group">
+                    <tr
+                      key={contact.id}
+                      className={`hover:bg-slate-50/70 transition-colors group ${isChecked ? 'bg-emerald-50/30' : ''}`}
+                    >
+                      <td className="px-4 py-3.5">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            const next = new Set(selectedContactIds);
+                            if (e.target.checked) next.add(contact.id);
+                            else next.delete(contact.id);
+                            setSelectedContactIds(next);
+                          }}
+                          className="w-4 h-4 accent-[#00b493] rounded cursor-pointer"
+                        />
+                      </td>
                       {/* CLIENT & CONTACT */}
                       <td className="px-5 py-3.5">
                         <div className="font-bold text-slate-900 text-xs">

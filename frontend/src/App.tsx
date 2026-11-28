@@ -28,6 +28,7 @@ import { WalletView } from './components/WalletView';
 import {
   MessageSquare,
   CheckCircle2,
+  Trash2,
   Send,
   Plus,
 } from 'lucide-react';
@@ -458,6 +459,13 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleDeleteCampaign = async (campaignId: string) => {
+    const ok = await dynamicStore.deleteQueuedCampaign(campaignId);
+    setCampaigns((prev) => prev.filter((c) => c.id !== campaignId));
+    setMessages((prev) => prev.filter((m) => m.campaignId !== campaignId));
+    showToast(ok ? 'Campaign deleted from server.' : 'Campaign removed from view.');
+  };
+
   // Add Contact with de-duplication
   const handleAddContact = async (
     contactData: Omit<Contact, 'id' | 'createdAt'> & {
@@ -497,6 +505,17 @@ export const App: React.FC = () => {
     });
     dynamicStore.deleteContact(id).catch(console.warn);
     showToast('Lead deleted from database');
+  };
+
+  const handleBulkDeleteContacts = (ids: string[]) => {
+    const idSet = new Set(ids);
+    setContacts((prev) => {
+      const updated = prev.filter((c) => !idSet.has(c.id));
+      saveToStorage('wa_saas_contacts_v2', updated);
+      return updated;
+    });
+    dynamicStore.bulkDeleteContacts(ids).catch(console.warn);
+    showToast(`Deleted ${ids.length} selected contact(s) from database`);
   };
 
   const handleUpdateContact = (updatedContact: Contact) => {
@@ -787,6 +806,7 @@ export const App: React.FC = () => {
               onImportCsv={handleImportCsv}
               onGroupGrabberExtract={handleGroupGrabberExtract}
               onDeleteContact={handleDeleteContact}
+              onBulkDeleteContacts={handleBulkDeleteContacts}
               onUpdateContact={handleUpdateContact}
             />
           )}
@@ -859,12 +879,25 @@ export const App: React.FC = () => {
                           Delivered: <strong className="text-emerald-700">{camp.deliveredCount}</strong>/{camp.totalContacts}
                           {camp.failedCount > 0 && <span className="text-rose-600 ml-2">({camp.failedCount} failed)</span>}
                         </span>
-                        <button
-                          onClick={() => setCurrentTab('reports')}
-                          className="text-[#00897b] font-bold hover:underline"
-                        >
-                          View Live Report →
-                        </button>
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => setCurrentTab('reports')}
+                            className="text-[#00897b] font-bold hover:underline"
+                          >
+                            View Live Report →
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Delete campaign "${camp.name}"?`)) {
+                                handleDeleteCampaign(camp.id);
+                              }
+                            }}
+                            className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition"
+                            title="Delete Campaign"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -880,6 +913,7 @@ export const App: React.FC = () => {
               onPauseCampaign={handlePauseCampaign}
               onResumeCampaign={handleResumeCampaign}
               onCancelCampaign={handleCancelCampaign}
+              onDeleteCampaign={handleDeleteCampaign}
             />
           )}
 

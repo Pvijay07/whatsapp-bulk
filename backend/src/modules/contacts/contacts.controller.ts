@@ -42,6 +42,13 @@ export class ContactsController {
     return this.contactsService.bulkUpsert(orgId, body.contacts || []);
   }
 
+  @Post('bulk-delete')
+  @HttpCode(HttpStatus.OK)
+  async bulkDeleteContacts(@Request() req: any, @Body() body: { ids: string[] }) {
+    const orgId = req.user?.organizationId || (await this.contactsService.getOrCreateDefaultOrgId());
+    return this.contactsService.bulkDelete(orgId, body?.ids || []);
+  }
+
   @Delete(':id')
   async deleteContact(@Request() req: any, @Param('id') id: string) {
     const orgId = req.user?.organizationId || (await this.contactsService.getOrCreateDefaultOrgId());
