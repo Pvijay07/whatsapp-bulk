@@ -612,6 +612,7 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
             }
           } else if (outcome === 'FAILED') {
             summary.failedCount++;
+            if (this.stopRequested) break;
           } else {
             summary.skippedCount++;
           }
@@ -681,6 +682,11 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
       undefined,
       preferredSender,
     );
+
+    if (!sendRes.success && sendRes.error?.includes('Daily limit')) {
+      this.logger.warn(`🛑 Follow-up cycle stopping: ${sendRes.error}`);
+      this.stopRequested = true;
+    }
 
     const workflow = org.workflowSettings || {};
     const maxNotResponding = workflow.notRespondingMaxFollowups || 5;

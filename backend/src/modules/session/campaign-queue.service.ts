@@ -360,6 +360,13 @@ export class CampaignQueueService implements OnModuleInit {
         msg.sentAt = now;
         campaign.sentCount++;
         sentSinceLastCooldown++;
+      } else if (res.error?.includes('Daily limit')) {
+        msg.status = 'QUEUED';
+        campaign.status = 'PAUSED';
+        campaign.updatedAt = new Date().toISOString();
+        this.persistToDisk();
+        this.logger.warn(`🛑 Campaign ${campaign.id} auto-paused: ${res.error}`);
+        break;
       } else {
         msg.status = 'FAILED';
         msg.senderNumber = res.senderNumber || res.dispatchedVia || session.connectedNumber || campaign.senderNumber;

@@ -857,10 +857,9 @@ export class BaileysSessionService implements OnModuleInit {
       return selected;
     }
 
-    // If all sessions reached daily safe cap, fallback to the one with the lowest daily usage
-    this.logger.warn(`⚠️ All online WhatsApp sessions have reached daily safe cap. Selecting lowest-utilized account.`);
-    const sorted = [...onlineList].sort((a, b) => (a.dailySentCount || 0) - (b.dailySentCount || 0));
-    return sorted[0];
+    // Strict Hard Cap: Do NOT exceed 30 contacts/day per SIM
+    this.logger.warn(`🛑 All online WhatsApp sessions have reached their strict daily cap (30 contacts/day per SIM).`);
+    return null;
   }
 
   /**
@@ -904,10 +903,24 @@ export class BaileysSessionService implements OnModuleInit {
   ): Promise<{ success: boolean; messageId: string; dispatchedVia?: string; senderNumber?: string; senderLabel?: string; error?: string }> {
     const session = this.getNextOnlineSession(preferredSessionId);
     if (!session || !session.sock) {
+      const onlineCount = this.getOnlineSessions().length;
       return {
         success: false,
         messageId: '',
-        error: `No online WhatsApp account available. Link at least one WhatsApp number in Virtual Numbers.`,
+        error:
+          onlineCount > 0
+            ? `Daily limit of 30 contacts/day reached across all ${onlineCount} connected SIM(s). Try again tomorrow or connect another SIM.`
+            : `No online WhatsApp account available. Link at least one WhatsApp number in Virtual Numbers.`,
+      };
+    }
+
+    this.refreshSessionDailyCount(session);
+    const { maxDailySafeCap } = calculateWarmupMetrics(session.createdAt);
+    if (session.dailySentCount >= maxDailySafeCap) {
+      return {
+        success: false,
+        messageId: '',
+        error: `Daily limit of ${maxDailySafeCap} contacts/day reached for SIM +${session.connectedPhoneNumber || session.label}.`,
       };
     }
 
