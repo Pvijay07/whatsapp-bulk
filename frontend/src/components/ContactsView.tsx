@@ -50,6 +50,7 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
   const [selectedService, setSelectedService] = useState('ALL');
   const [selectedRep, setSelectedRep] = useState('ALL');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
+  const [selectedSource, setSelectedSource] = useState('ALL');
   const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set());
 
   // Modals
@@ -125,10 +126,12 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
       const matchesService = selectedService === 'ALL' || service.toLowerCase().includes(selectedService.toLowerCase());
       const matchesRep = selectedRep === 'ALL' || rep.toLowerCase() === selectedRep.toLowerCase();
       const matchesStatus = selectedStatus === 'ALL' || status.toLowerCase() === selectedStatus.toLowerCase();
+      const sourceName = (c.source || 'WhatsApp').toLowerCase();
+      const matchesSource = selectedSource === 'ALL' || sourceName.includes(selectedSource.toLowerCase());
 
-      return matchesSearch && matchesService && matchesRep && matchesStatus;
+      return matchesSearch && matchesService && matchesRep && matchesStatus && matchesSource;
     });
-  }, [contacts, searchTerm, selectedService, selectedRep, selectedStatus]);
+  }, [contacts, searchTerm, selectedService, selectedRep, selectedStatus, selectedSource]);
 
   // Handle Create Lead
   const handleCreateContact = (e: React.FormEvent) => {
@@ -416,6 +419,20 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
             </select>
             <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
+
+          {/* Source Filter */}
+          <div className="relative">
+            <select
+              value={selectedSource}
+              onChange={(e) => setSelectedSource(e.target.value)}
+              className="appearance-none bg-white border border-slate-200 rounded-xl px-3 py-1.5 pr-8 text-xs font-semibold text-slate-700 hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-[#00b493] cursor-pointer"
+            >
+              <option value="ALL">All Sources</option>
+              <option value="SalesBuster">SalesBuster CRM</option>
+              <option value="WhatsApp">Local / WhatsApp</option>
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
         </div>
       </div>
 
@@ -568,10 +585,16 @@ export const ContactsView: React.FC<ContactsViewProps> = ({
 
                       {/* SOURCE */}
                       <td className="px-5 py-3.5">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
-                          <span className="text-[10px] text-emerald-600 font-bold">@</span>
-                          <span>WhatsApp</span>
-                        </span>
+                        {String(contact.source || '').toLowerCase().includes('salesbuster') ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/80">
+                            <span>SalesBuster CRM</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
+                            <span className="text-[10px] text-emerald-600 font-bold">@</span>
+                            <span>{contact.source || 'WhatsApp'}</span>
+                          </span>
+                        )}
                       </td>
 
                       {/* STATUS */}

@@ -102,7 +102,17 @@ export const FollowupReportsView: React.FC = () => {
     totalEvaluated: number;
     onlineSimsCount: number;
     maxPerSimCap: number;
-  }>({ totalEvaluated: 0, onlineSimsCount: 0, maxPerSimCap: 30 });
+    totalDailyCap: number;
+    remainingToday: number;
+    overflowCount: number;
+  }>({
+    totalEvaluated: 0,
+    onlineSimsCount: 0,
+    maxPerSimCap: 30,
+    totalDailyCap: 0,
+    remainingToday: 0,
+    overflowCount: 0,
+  });
 
   const fetchReports = useCallback(async () => {
     setLoading(true);
@@ -151,12 +161,18 @@ export const FollowupReportsView: React.FC = () => {
       if (res.data?.success) {
         const list = res.data.dueLeads || [];
         setDueLeads(list);
-        const cap = Math.max(1, res.data.onlineSimsCount || 1) * (res.data.maxPerSimCap || 30);
+        const cap =
+          res.data.remainingToday > 0
+            ? res.data.remainingToday
+            : Math.max(1, res.data.onlineSimsCount || 1) * (res.data.maxPerSimCap || 30);
         setSelectedKeys(new Set(list.slice(0, cap).map((l: any) => l.key)));
         setPreviewMeta({
           totalEvaluated: res.data.totalEvaluated || 0,
           onlineSimsCount: res.data.onlineSimsCount || 0,
           maxPerSimCap: res.data.maxPerSimCap || 30,
+          totalDailyCap: res.data.totalDailyCap || 0,
+          remainingToday: res.data.remainingToday || 0,
+          overflowCount: res.data.overflowCount || 0,
         });
         setShowPreview(true);
         setRunStatus(
@@ -355,7 +371,16 @@ export const FollowupReportsView: React.FC = () => {
                 Contacts Requiring Follow-up ({dueLeads.length} Due • {selectedKeys.size} Selected)
               </h3>
               <p className="text-xs text-emerald-800 mt-0.5">
-                Online SIMs: <b>{previewMeta.onlineSimsCount}</b> • Safe Cap: <b>{previewMeta.maxPerSimCap} contacts/SIM</b> • No messages sent yet until you click Process.
+                Online SIMs: <b>{previewMeta.onlineSimsCount}</b> • Remaining Today:{' '}
+                <b>
+                  {previewMeta.remainingToday} / {previewMeta.totalDailyCap || previewMeta.maxPerSimCap}
+                </b>{' '}
+                ({previewMeta.maxPerSimCap}/SIM)
+                {previewMeta.overflowCount > 0 && (
+                  <span className="ml-1.5 text-amber-800 font-semibold">
+                    • +{previewMeta.overflowCount} extra contact(s) will roll over to tomorrow's loop
+                  </span>
+                )}
               </p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">

@@ -238,3 +238,38 @@ test('formatWhatsAppReplyText formats inline lists cleanly onto separate lines',
   const out = formatWhatsAppReplyText(raw);
   assert.equal(out, 'Options:\n1. Grooming.\n2. Boarding.\n\nWould you like one?');
 });
+
+test('Not Attended -> Auto Msg loop-breaker fires only once even if lead re-enters Not Attended', async () => {
+  const { service, states, sentMessages } = createHarness();
+  const org = { _id: 'org1', name: 'Petsfolio', tenantDbName: 'sb_tenant_1' };
+  const lead = { _id: 'l_loop', name: 'Asha', phone: '919876543299', folder: 'Not Attended' };
+
+  assert.equal(await service.processSingleLead(lead, org, new Date('2026-11-28T10:00:00Z')), 'SENT');
+  assert.equal(states.get('sb_tenant_1:l_loop:not_attended').status, 'COMPLETED');
+
+  // Lead cycles back to New Leads and falls back into Not Attended 24h later -> must SKIP
+  assert.equal(await service.processSingleLead(lead, org, new Date('2026-11-29T10:05:00Z')), 'SKIPPED');
+  assert.equal(sentMessages.length, 1);
+});
+
+test('Daily capacity rollover schedules overflow contacts beyond 30/SIM cap to tomorrow', async () => {
+  const { service, states } = createHarness();
+  const org = { _id: 'org1', name: 'Petsfolio', tenantDbName: 'sb_tenant_1' };
+  // 3 SIMs with 30/SIM already sent today -> 0 remainingToday -> any due lead rolls over
+  service.baileysService.getOnlineSessions = () => [
+    { sessionId: 's1', dailySentCount: 30 },
+    { sessionId: 's2', dailySentCount: 30 },
+    { sessionId: 's3', dailySentCount: 30 },
+  ];
+  service.mongoService.fetchActiveOrganizations = async () => [org];
+  service.mongoService.fetchEligibleLeads = async () => [
+    { _id: 'l_over_1', name: 'Overflow Lead', phone: '919876500001', folder: 'New Leads', status: 'New' },
+  ];
+
+  const summary = await service.runFollowupCycle();
+  assert.equal(summary.sentCount, 0);
+  assert.equal(summary.rolledOverCount, 1);
+  const rolled = states.get('sb_tenant_1:l_over_1:new_lead');
+  assert.equal(rolled.status, 'ACTIVE');
+  assert.ok(rolled.nextDueAt instanceof Date);
+});

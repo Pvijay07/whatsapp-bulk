@@ -1,6 +1,8 @@
-import { Controller, Get, Post, Delete, Body, Param, Query, Request, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, Query, Request, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ContactsService } from './contacts.service';
 
+@UseGuards(JwtAuthGuard)
 @Controller('contacts')
 export class ContactsController {
   constructor(private readonly contactsService: ContactsService) {}
@@ -10,9 +12,17 @@ export class ContactsController {
     @Request() req: any,
     @Query('page') page = '1',
     @Query('limit') limit = '1000',
+    @Query('source') source?: string,
   ) {
     const orgId = req.user?.organizationId || (await this.contactsService.getOrCreateDefaultOrgId());
-    return this.contactsService.getContacts(orgId, parseInt(page, 10), parseInt(limit, 10));
+    const tenantDbName = req.user?.tenantDbName || undefined;
+    return this.contactsService.getContacts(
+      orgId,
+      parseInt(page, 10),
+      parseInt(limit, 10),
+      tenantDbName,
+      source,
+    );
   }
 
   @Post()

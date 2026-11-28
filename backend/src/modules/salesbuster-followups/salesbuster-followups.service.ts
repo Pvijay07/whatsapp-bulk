@@ -207,11 +207,43 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
     );
   }
 
+  private getDailyCapacityMetrics(): {
+    onlineSimsCount: number;
+    maxPerSimCap: number;
+    totalDailyCap: number;
+    remainingToday: number;
+  } {
+    const maxPerSimCap = this.config.maxPerSimPerCycle || 30;
+    const onlineSessions =
+      typeof (this.baileysService as any).getOnlineSessions === 'function'
+        ? this.baileysService.getOnlineSessions()
+        : [];
+    const onlineSimsCount = onlineSessions.length;
+    const totalDailyCap = onlineSimsCount * maxPerSimCap;
+    const remainingToday =
+      onlineSimsCount > 0
+        ? onlineSessions.reduce(
+            (sum: number, s: any) => sum + Math.max(0, maxPerSimCap - (s.dailySentCount || 0)),
+            0,
+          )
+        : 0;
+    return { onlineSimsCount, maxPerSimCap, totalDailyCap, remainingToday };
+  }
+
+  private getTomorrowLoopTime(now: Date = new Date()): Date {
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    tomorrow.setHours(10, 0, 0, 0);
+    return tomorrow;
+  }
+
   async previewDueLeads(now: Date = new Date(), scope?: FollowupOrgScope): Promise<{
     totalEvaluated: number;
     dueCount: number;
     onlineSimsCount: number;
     maxPerSimCap: number;
+    totalDailyCap: number;
+    remainingToday: number;
+    overflowCount: number;
     dueLeads: Array<{
       key: string;
       orgId: string;
@@ -225,13 +257,8 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
       nextAttempt: number;
     }>;
   }> {
-    const onlineSimsCount = Math.max(
-      0,
-      typeof (this.baileysService as any).getOnlineSessions === 'function'
-        ? this.baileysService.getOnlineSessions().length
-        : 0,
-    );
-    const maxPerSimCap = this.config.maxPerSimPerCycle || 30;
+    const { onlineSimsCount, maxPerSimCap, totalDailyCap, remainingToday } =
+      this.getDailyCapacityMetrics();
     const dueLeads: Array<{
       key: string;
       orgId: string;
@@ -292,11 +319,17 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
       }
     }
 
+    const overflowCount =
+      remainingToday > 0 ? Math.max(0, dueLeads.length - remainingToday) : Math.max(0, dueLeads.length - maxPerSimCap);
+
     return {
       totalEvaluated,
       dueCount: dueLeads.length,
       onlineSimsCount,
       maxPerSimCap,
+      totalDailyCap,
+      remainingToday,
+      overflowCount,
       dueLeads,
     };
   }
@@ -560,15 +593,61 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
     }
   }
 
+  private async scheduleRolloverForTomorrow(
+    lead: SalesBusterLead,
+    org: SalesBusterOrg,
+    stage: FollowupStage,
+    now: Date,
+  ) {
+    const phone = lead.phoneNormalized || lead.phone;
+    if (!phone) return;
+    const tomorrowAt = this.getTomorrowLoopTime(now);
+    try {
+      await this.prisma.leadFollowupState.upsert({
+        where: {
+          tenantDbName_mongoLeadId_stage: {
+            tenantDbName: org.tenantDbName,
+            mongoLeadId: lead._id,
+            stage,
+          },
+        },
+        create: {
+          orgId: org._id,
+          tenantDbName: org.tenantDbName,
+          mongoLeadId: lead._id,
+          phone,
+          stage,
+          attemptCount: 0,
+          status: 'ACTIVE',
+          lastSentAt: null,
+          nextDueAt: tomorrowAt,
+        },
+        update: {
+          phone,
+          status: 'ACTIVE',
+          nextDueAt: tomorrowAt,
+        },
+      });
+    } catch {}
+  }
+
   async runFollowupCycle(selectedKeys?: string[], scope?: FollowupOrgScope): Promise<{
     processedOrgs: number;
     evaluatedLeads: number;
     sentCount: number;
     failedCount: number;
     skippedCount: number;
+    rolledOverCount: number;
   }> {
     if (this.isRunning) {
-      return { processedOrgs: 0, evaluatedLeads: 0, sentCount: 0, failedCount: 0, skippedCount: 0 };
+      return {
+        processedOrgs: 0,
+        evaluatedLeads: 0,
+        sentCount: 0,
+        failedCount: 0,
+        skippedCount: 0,
+        rolledOverCount: 0,
+      };
     }
 
     const selectedSet =
@@ -582,39 +661,55 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
       sentCount: 0,
       failedCount: 0,
       skippedCount: 0,
+      rolledOverCount: 0,
     };
     let sentSinceCooldown = 0;
-    const onlineSessionsCount = Math.max(
-      1,
-      typeof (this.baileysService as any).getOnlineSessions === 'function'
-        ? this.baileysService.getOnlineSessions().length
-        : 1,
-    );
-    const maxLeadsThisCycle = onlineSessionsCount * (this.config.maxPerSimPerCycle || 30);
+    const { onlineSimsCount, maxPerSimCap, remainingToday } = this.getDailyCapacityMetrics();
+    const maxLeadsThisCycle =
+      onlineSimsCount > 0 ? Math.max(0, remainingToday) : maxPerSimCap;
+    let dailyCapReached = onlineSimsCount > 0 && maxLeadsThisCycle === 0;
 
     try {
+      const now = new Date();
       const allOrgs = await this.mongoService.fetchActiveOrganizations();
       const orgs = this.filterScopedOrgs(allOrgs, scope);
       summary.processedOrgs = orgs.length;
 
       for (const org of orgs) {
-        if (this.stopRequested || summary.sentCount >= maxLeadsThisCycle) break;
+        if (this.stopRequested) break;
         const leads = await this.mongoService.fetchEligibleLeads(org.tenantDbName);
         for (const lead of leads) {
-          if (this.stopRequested || summary.sentCount >= maxLeadsThisCycle) break;
+          if (this.stopRequested) break;
+
+          const st = this.resolveLeadStage(lead, now);
+          if (!st) {
+            summary.skippedCount++;
+            continue;
+          }
+
           if (selectedSet) {
-            const st = this.resolveLeadStage(lead);
-            const k = st ? `${org.tenantDbName}:${lead._id}:${st}` : '';
-            if (!st || !selectedSet.has(k)) {
+            const k = `${org.tenantDbName}:${lead._id}:${st}`;
+            if (!selectedSet.has(k)) {
               summary.skippedCount++;
               continue;
             }
           }
+
+          // If daily 30/SIM cap (e.g., 90 across 3 SIMs) is reached, roll over extra due contacts to tomorrow's loop
+          if (dailyCapReached || summary.sentCount >= maxLeadsThisCycle) {
+            await this.scheduleRolloverForTomorrow(lead, org, st, now);
+            summary.rolledOverCount++;
+            continue;
+          }
+
           summary.evaluatedLeads++;
-          const outcome = await this.processSingleLead(lead, org);
+          const outcome = await this.processSingleLead(lead, org, now);
           if (outcome === 'SENT') {
             summary.sentCount++;
             sentSinceCooldown++;
+            if (summary.sentCount >= maxLeadsThisCycle) {
+              dailyCapReached = true;
+            }
             if (this.stopRequested) break;
 
             // Coffee break cooldown (same as Campaigns)
@@ -626,7 +721,7 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
               );
               sentSinceCooldown = 0;
               await new Promise((r) => setTimeout(r, breakSec * 1000));
-            } else {
+            } else if (!dailyCapReached) {
               // 25-30s Box-Muller Gaussian pacing between follow-ups (same as Campaigns)
               const baseMean = Math.max(18, this.config.delayIntervalSec || 28);
               const gaussianDelaySec = getGaussianJitter(baseMean, 6, 18, 65);
@@ -635,11 +730,21 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
             }
           } else if (outcome === 'FAILED') {
             summary.failedCount++;
-            if (this.stopRequested) break;
+            if (this.stopRequested) {
+              // Daily limit hit inside Baileys — roll over remaining leads to tomorrow
+              dailyCapReached = true;
+              this.stopRequested = false;
+            }
           } else {
             summary.skippedCount++;
           }
         }
+      }
+
+      if (summary.rolledOverCount > 0) {
+        this.logger.log(
+          `📅 Daily Cap (${maxLeadsThisCycle}) reached: Rolled over ${summary.rolledOverCount} extra contact(s) to tomorrow's follow-up loop.`,
+        );
       }
     } finally {
       this.isRunning = false;
@@ -681,6 +786,12 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
     const nextAttempt = (existingState?.attemptCount || 0) + 1;
     const messageText = await this.generateStageMessage(lead, org, stage, nextAttempt);
 
+    const primaryWhatsapp =
+      (org.workflowSettings as any)?.primaryWhatsappNumber ||
+      (org.aiSettings as any)?.primaryWhatsappNumber ||
+      this.config.buttonValue ||
+      '917997887788';
+
     const buttons =
       this.config.buttonEnabled !== false
         ? [
@@ -688,7 +799,7 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
               id: 'btn-interactive',
               type: 'QUICK_REPLY',
               text: this.config.buttonText || 'WhatsApp Now',
-              value: this.config.buttonValue || '917997887788',
+              value: primaryWhatsapp,
             },
           ]
         : [];

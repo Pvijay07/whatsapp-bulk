@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import { SalesBusterMongoService } from '../salesbuster-followups/salesbuster-mongo.service';
 import { ConsentStatus } from '@prisma/client';
 import { parse } from 'csv-parse';
 import { Readable } from 'stream';
@@ -10,7 +11,10 @@ import * as path from 'path';
 export class ContactsService {
   private readonly logger = new Logger(ContactsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mongoService: SalesBusterMongoService,
+  ) {}
 
   private getStorageFile(): string {
     const baseDir =
@@ -49,45 +53,115 @@ export class ContactsService {
   }
 
   /**
-   * Retrieves contacts from PostgreSQL, with fallback to persistent JSON store.
+   * Retrieves contacts from PostgreSQL/JSON and merges live SalesBuster MongoDB leads
+   * scoped to the logged-in organization (tenantDbName) when available.
    */
-  async getContacts(organizationId?: string, page = 1, limit = 1000) {
+  async getContacts(
+    organizationId?: string,
+    page = 1,
+    limit = 1000,
+    tenantDbName?: string,
+    sourceFilter?: string,
+  ) {
     const orgId = organizationId || (await this.getOrCreateDefaultOrgId());
     const skip = (page - 1) * limit;
 
-    try {
-      const [items, total] = await Promise.all([
-        this.prisma.contact.findMany({
-          where: { organizationId: orgId },
-          skip,
-          take: limit,
-          orderBy: { createdAt: 'desc' },
-        }),
-        this.prisma.contact.count({ where: { organizationId: orgId } }),
-      ]);
+    let localItems: any[] = [];
+    let localSource = 'POSTGRESQL';
 
-      if (items && items.length > 0) {
-        return { items, total, page, limit, source: 'POSTGRESQL' };
+    if (sourceFilter !== 'mongodb') {
+      try {
+        const items = await this.prisma.contact.findMany({
+          where: { organizationId: orgId },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (items && items.length > 0) {
+          localItems = items;
+        }
+      } catch (e: any) {
+        this.logger.warn(`PostgreSQL getContacts query error: ${e.message}. Using JSON fallback.`);
       }
-    } catch (e: any) {
-      this.logger.warn(`PostgreSQL getContacts query error: ${e.message}. Using JSON fallback.`);
+
+      if (localItems.length === 0) {
+        const file = this.getStorageFile();
+        if (fs.existsSync(file)) {
+          try {
+            localItems = JSON.parse(fs.readFileSync(file, 'utf8'));
+            localSource = 'JSON_STORE';
+          } catch (e) {}
+        }
+      }
     }
 
-    // Fallback to disk JSON store if PostgreSQL is empty or offline
-    const file = this.getStorageFile();
-    let fileItems: any[] = [];
-    if (fs.existsSync(file)) {
+    let mongoItems: any[] = [];
+    if (sourceFilter !== 'local' && this.mongoService?.isConfigured()) {
       try {
-        fileItems = JSON.parse(fs.readFileSync(file, 'utf8'));
-      } catch (e) {}
+        const allOrgs = await this.mongoService.fetchActiveOrganizations();
+        const targetOrgs = tenantDbName
+          ? allOrgs.filter((o) => o.tenantDbName === tenantDbName)
+          : allOrgs;
+
+        for (const org of targetOrgs) {
+          const leads = await this.mongoService.fetchEligibleLeads(org.tenantDbName);
+          for (const lead of leads) {
+            const rawPhone = lead.phoneNormalized || lead.phone || '';
+            if (!rawPhone) continue;
+            const phone = this.normalizePhoneNumber(rawPhone);
+            const createdDate = lead.createdAt
+              ? new Date(lead.createdAt).toLocaleDateString('en-IN')
+              : new Date().toLocaleDateString('en-IN');
+            const createdTime = lead.createdAt
+              ? new Date(lead.createdAt).toLocaleTimeString('en-IN', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+              : 'Recent';
+
+            mongoItems.push({
+              id: `mongo_${org.tenantDbName}_${lead._id}`,
+              organizationId: orgId,
+              name: lead.name?.trim() || phone,
+              phoneNumber: phone,
+              optInConsent: !lead.isOptedOut,
+              isSuppressed: String(lead.status || '').toUpperCase() === 'DND',
+              createdAt: createdDate,
+              metadata: {
+                tag: lead.folder || 'SalesBuster CRM',
+                service: lead.service || lead.folder || 'SalesBuster Lead',
+                source: 'SalesBuster CRM',
+                status: lead.status || 'New',
+                assignedRep: org.name || 'CRM',
+                enquiredTime: createdTime,
+                mongoLeadId: lead._id,
+                tenantDbName: org.tenantDbName,
+              },
+            });
+          }
+        }
+      } catch (mongoErr: any) {
+        this.logger.warn(`MongoDB leads fetch in Contacts notice: ${mongoErr.message}`);
+      }
+    }
+
+    // Merge & de-duplicate by normalized phone (MongoDB CRM leads first when present)
+    const seenPhones = new Set<string>();
+    const merged: any[] = [];
+
+    for (const item of [...mongoItems, ...localItems]) {
+      const norm = this.normalizePhoneNumber(item.phoneNumber || '');
+      if (norm && seenPhones.has(norm)) continue;
+      if (norm) seenPhones.add(norm);
+      merged.push(item);
     }
 
     return {
-      items: fileItems.slice(skip, skip + limit),
-      total: fileItems.length,
+      items: merged.slice(skip, skip + limit),
+      total: merged.length,
+      mongoCount: mongoItems.length,
+      localCount: localItems.length,
       page,
       limit,
-      source: 'JSON_STORE',
+      source: mongoItems.length > 0 ? `${localSource}+MONGODB` : localSource,
     };
   }
 
