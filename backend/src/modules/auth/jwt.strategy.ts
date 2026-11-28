@@ -21,6 +21,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       email: payload.email,
       organizationId: payload.organizationId,
       role: payload.role,
+      mongoOrgId: payload.mongoOrgId || null,
+      tenantDbName: payload.tenantDbName || null,
+      orgName: payload.orgName || null,
+      authSource: payload.authSource || 'POSTGRES',
     };
   }
 }

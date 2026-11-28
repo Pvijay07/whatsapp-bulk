@@ -1,6 +1,7 @@
 import { Injectable, UnauthorizedException, ConflictException, BadRequestException, Logger, OnModuleInit } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../database/prisma.service';
+import { SalesBusterMongoService } from '../salesbuster-followups/salesbuster-mongo.service';
 import * as bcrypt from 'bcrypt';
 import { UserRole, OrgStatus } from '@prisma/client';
 
@@ -11,6 +12,7 @@ export class AuthService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly mongoService: SalesBusterMongoService,
   ) {}
 
   async onModuleInit() {
@@ -200,13 +202,96 @@ export class AuthService implements OnModuleInit {
       };
     }
 
+    // 3. Authenticate Sales Manager from SalesBuster MongoDB
+    if (this.mongoService.isConfigured()) {
+      const mongoAuth = await this.mongoService.authenticateSalesManager(cleanEmail, dto.password);
+      if (mongoAuth) {
+        let pgOrgId = '00000000-0000-0000-0000-000000000001';
+        try {
+          let pgOrg = await this.prisma.organization.findFirst({
+            where: { name: mongoAuth.organization.name },
+          });
+          if (!pgOrg) {
+            pgOrg = await this.prisma.organization.create({
+              data: {
+                name: mongoAuth.organization.name,
+                status: OrgStatus.ACTIVE,
+              },
+            });
+            await this.prisma.wallet.create({
+              data: {
+                organizationId: pgOrg.id,
+                currency: 'INR',
+                balancePaise: 100000n,
+                reservedPaise: 0n,
+              },
+            });
+          }
+          pgOrgId = pgOrg.id;
+        } catch (pgErr: any) {
+          this.logger.warn(`PostgreSQL org sync notice for Mongo Sales Manager: ${pgErr.message}`);
+        }
+
+        const token = this.jwtService.sign({
+          sub: mongoAuth.user.id,
+          email: mongoAuth.user.email,
+          organizationId: pgOrgId,
+          role: mongoAuth.user.role,
+          mongoOrgId: mongoAuth.organization._id,
+          tenantDbName: mongoAuth.organization.tenantDbName,
+          orgName: mongoAuth.organization.name,
+          authSource: 'MONGODB',
+        });
+
+        this.logger.log(
+          `✅ Sales Manager authenticated via MongoDB: ${mongoAuth.user.email} (Org: ${mongoAuth.organization.name} / ${mongoAuth.organization.tenantDbName})`,
+        );
+
+        return {
+          accessToken: token,
+          organization: {
+            id: pgOrgId,
+            name: mongoAuth.organization.name,
+            mongoOrgId: mongoAuth.organization._id,
+            tenantDbName: mongoAuth.organization.tenantDbName,
+          },
+          user: {
+            id: mongoAuth.user.id,
+            email: mongoAuth.user.email,
+            name: mongoAuth.user.name,
+            role: mongoAuth.user.role,
+            tenantDbName: mongoAuth.organization.tenantDbName,
+            authSource: 'MONGODB',
+          },
+        };
+      }
+    }
+
     throw new UnauthorizedException('Invalid email or password.');
   }
 
   /**
    * Returns current authenticated user and organization.
    */
-  async getProfile(userId: string) {
+  async getProfile(userId: string, tokenUser?: any) {
+    if (tokenUser?.authSource === 'MONGODB' && tokenUser?.tenantDbName) {
+      return {
+        id: tokenUser.userId || userId,
+        email: tokenUser.email,
+        name: tokenUser.email?.split('@')[0] || 'Sales Manager',
+        role: tokenUser.role || 'SALES_MANAGER',
+        tenantDbName: tokenUser.tenantDbName,
+        mongoOrgId: tokenUser.mongoOrgId,
+        authSource: 'MONGODB',
+        organization: {
+          id: tokenUser.organizationId,
+          name: tokenUser.orgName || 'SalesBuster Organization',
+          tenantDbName: tokenUser.tenantDbName,
+          mongoOrgId: tokenUser.mongoOrgId,
+        },
+      };
+    }
+
     try {
       const user = await this.prisma.user.findUnique({
         where: { id: userId },

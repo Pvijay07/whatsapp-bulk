@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { MongoClient, Db } from 'mongodb';
+import * as bcrypt from 'bcrypt';
 
 export interface SalesBusterOrg {
   _id: string;
@@ -194,6 +195,104 @@ export class SalesBusterMongoService implements OnModuleDestroy {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Authenticates a Sales Manager (or org admin) against SalesBuster MongoDB (read-only).
+   * Searches both Master DB `users` and each active organization's tenant DB `users`.
+   */
+  async authenticateSalesManager(
+    email: string,
+    password: string,
+  ): Promise<{
+    user: { id: string; email: string; name: string; role: string };
+    organization: { _id: string; name: string; tenantDbName: string };
+  } | null> {
+    const client = await this.getClient();
+    if (!client) return null;
+
+    const cleanEmail = (email || '').trim().toLowerCase();
+    if (!cleanEmail || !password) return null;
+
+    const orgs = await this.fetchActiveOrganizations();
+    const orgById = new Map(orgs.map((o) => [String(o._id), o]));
+    const orgByTenant = new Map(orgs.map((o) => [o.tenantDbName, o]));
+
+    const verifyPassword = async (candidate: any): Promise<boolean> => {
+      const stored = candidate?.passwordHash || candidate?.password;
+      if (!stored || typeof stored !== 'string') return false;
+      if (stored.startsWith('$2a$') || stored.startsWith('$2b$') || stored.startsWith('$2y$')) {
+        return bcrypt.compare(password, stored);
+      }
+      return password === stored;
+    };
+
+    const isAllowedRole = (roleRaw: any): boolean => {
+      if (!roleRaw) return true;
+      const r = String(roleRaw).trim().toLowerCase().replace(/[\s-]+/g, '_');
+      return ['sales_manager', 'salesmanager', 'manager', 'admin', 'org_admin', 'owner', 'super_admin'].includes(r);
+    };
+
+    const emailQuery = {
+      email: { $regex: `^${cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+    };
+
+    // 1. Check Master DB `users`
+    try {
+      const masterDb = this.getMasterDb(client);
+      const masterUser = await masterDb.collection('users').findOne(emailQuery);
+      if (masterUser && masterUser.isActive !== false && masterUser.status !== 'inactive') {
+        if (isAllowedRole(masterUser.role) && (await verifyPassword(masterUser))) {
+          const matchedOrg =
+            orgById.get(String(masterUser.organizationId || masterUser.orgId || '')) ||
+            orgByTenant.get(String(masterUser.tenantDbName || ''));
+          if (matchedOrg) {
+            return {
+              user: {
+                id: String(masterUser._id),
+                email: masterUser.email || cleanEmail,
+                name: masterUser.name || cleanEmail.split('@')[0],
+                role: masterUser.role || 'SALES_MANAGER',
+              },
+              organization: {
+                _id: matchedOrg._id,
+                name: matchedOrg.name,
+                tenantDbName: matchedOrg.tenantDbName,
+              },
+            };
+          }
+        }
+      }
+    } catch (e: any) {
+      this.logger.debug(`Master DB users lookup notice: ${e.message}`);
+    }
+
+    // 2. Check each active organization's tenant DB `users`
+    for (const org of orgs) {
+      try {
+        const tenantDb = client.db(org.tenantDbName);
+        const tenantUser = await tenantDb.collection('users').findOne(emailQuery);
+        if (tenantUser && tenantUser.isActive !== false && tenantUser.status !== 'inactive') {
+          if (isAllowedRole(tenantUser.role) && (await verifyPassword(tenantUser))) {
+            return {
+              user: {
+                id: String(tenantUser._id),
+                email: tenantUser.email || cleanEmail,
+                name: tenantUser.name || cleanEmail.split('@')[0],
+                role: tenantUser.role || 'SALES_MANAGER',
+              },
+              organization: {
+                _id: org._id,
+                name: org.name,
+                tenantDbName: org.tenantDbName,
+              },
+            };
+          }
+        }
+      } catch {}
+    }
+
+    return null;
   }
 
   async onModuleDestroy() {

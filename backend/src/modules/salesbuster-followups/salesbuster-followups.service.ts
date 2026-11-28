@@ -49,6 +49,12 @@ export type FollowupStage =
   | 'not_responding'
   | 'marketing_drip';
 
+export interface FollowupOrgScope {
+  tenantDbName?: string;
+  mongoOrgId?: string;
+  orgName?: string;
+}
+
 export interface FollowupCampaignConfig {
   autoPollingEnabled: boolean;
   maxPerSimPerCycle: number;
@@ -166,7 +172,10 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
     return this.isRunning;
   }
 
-  triggerBackgroundRun(selectedKeys?: string[]): { started: boolean; isRunning: boolean; message: string } {
+  triggerBackgroundRun(
+    selectedKeys?: string[],
+    scope?: FollowupOrgScope,
+  ): { started: boolean; isRunning: boolean; message: string } {
     if (this.isRunning) {
       return {
         started: false,
@@ -176,7 +185,7 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
     }
     this.stopRequested = false;
     setImmediate(() => {
-      this.runFollowupCycle(selectedKeys).catch((err) =>
+      this.runFollowupCycle(selectedKeys, scope).catch((err) =>
         this.logger.error(`Background follow-up cycle failed: ${err.message}`),
       );
     });
@@ -184,12 +193,21 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
       started: true,
       isRunning: true,
       message: selectedKeys?.length
-        ? `Follow-up dispatch started for ${selectedKeys.length} selected lead(s) with anti-ban pacing.`
-        : 'Follow-up dispatch started in background with campaign templates & anti-ban pacing.',
+        ? `Follow-up dispatch started for ${selectedKeys.length} selected lead(s)${scope?.orgName ? ` (${scope.orgName})` : ''} with anti-ban pacing.`
+        : `Follow-up dispatch started in background${scope?.orgName ? ` for ${scope.orgName}` : ''} with campaign templates & anti-ban pacing.`,
     };
   }
 
-  async previewDueLeads(now: Date = new Date()): Promise<{
+  private filterScopedOrgs(orgs: SalesBusterOrg[], scope?: FollowupOrgScope): SalesBusterOrg[] {
+    if (!scope?.tenantDbName && !scope?.mongoOrgId) return orgs;
+    return orgs.filter(
+      (o) =>
+        (scope.tenantDbName && o.tenantDbName === scope.tenantDbName) ||
+        (scope.mongoOrgId && String(o._id) === String(scope.mongoOrgId)),
+    );
+  }
+
+  async previewDueLeads(now: Date = new Date(), scope?: FollowupOrgScope): Promise<{
     totalEvaluated: number;
     dueCount: number;
     onlineSimsCount: number;
@@ -228,7 +246,8 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
     }> = [];
     let totalEvaluated = 0;
 
-    const orgs = await this.mongoService.fetchActiveOrganizations();
+    const allOrgs = await this.mongoService.fetchActiveOrganizations();
+    const orgs = this.filterScopedOrgs(allOrgs, scope);
     for (const org of orgs) {
       const leads = await this.mongoService.fetchEligibleLeads(org.tenantDbName);
       for (const lead of leads) {
@@ -294,13 +313,16 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
     };
   }
 
-  async clearFollowupData(): Promise<{ success: boolean; deletedReports: number; deletedStates: number }> {
+  async clearFollowupData(
+    scope?: FollowupOrgScope,
+  ): Promise<{ success: boolean; deletedReports: number; deletedStates: number }> {
+    const where = scope?.tenantDbName ? { tenantDbName: scope.tenantDbName } : {};
     const [delReports, delStates] = await Promise.all([
-      this.prisma.followupDispatchReport.deleteMany({}),
-      this.prisma.leadFollowupState.deleteMany({}),
+      this.prisma.followupDispatchReport.deleteMany({ where }),
+      this.prisma.leadFollowupState.deleteMany({ where }),
     ]);
     this.logger.warn(
-      `🧹 Cleared SalesBuster follow-up data: ${delReports.count} reports, ${delStates.count} lead states removed.`,
+      `🧹 Cleared SalesBuster follow-up data${scope?.tenantDbName ? ` (${scope.tenantDbName})` : ''}: ${delReports.count} reports, ${delStates.count} lead states removed.`,
     );
     return {
       success: true,
@@ -538,7 +560,7 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
     }
   }
 
-  async runFollowupCycle(selectedKeys?: string[]): Promise<{
+  async runFollowupCycle(selectedKeys?: string[], scope?: FollowupOrgScope): Promise<{
     processedOrgs: number;
     evaluatedLeads: number;
     sentCount: number;
@@ -571,7 +593,8 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
     const maxLeadsThisCycle = onlineSessionsCount * (this.config.maxPerSimPerCycle || 30);
 
     try {
-      const orgs = await this.mongoService.fetchActiveOrganizations();
+      const allOrgs = await this.mongoService.fetchActiveOrganizations();
+      const orgs = this.filterScopedOrgs(allOrgs, scope);
       summary.processedOrgs = orgs.length;
 
       for (const org of orgs) {
@@ -761,8 +784,11 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
     return sendRes.success ? 'SENT' : 'FAILED';
   }
 
-  async getReports(stage?: string, limit = 100) {
-    const where = stage && stage !== 'ALL' ? { stage } : {};
+  async getReports(stage?: string, limit = 100, scope?: FollowupOrgScope) {
+    const where: any = {};
+    if (stage && stage !== 'ALL') where.stage = stage;
+    if (scope?.tenantDbName) where.tenantDbName = scope.tenantDbName;
+
     const reports = await this.prisma.followupDispatchReport.findMany({
       where,
       orderBy: { sentAt: 'desc' },
@@ -795,8 +821,10 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
       }
     }
 
+    const groupWhere: any = scope?.tenantDbName ? { tenantDbName: scope.tenantDbName } : {};
     const counts = await this.prisma.followupDispatchReport.groupBy({
       by: ['stage', 'deliveryStatus'],
+      where: groupWhere,
       _count: { _all: true },
     });
 
@@ -811,8 +839,10 @@ export class SalesBusterFollowupsService implements OnModuleInit, OnModuleDestro
     };
   }
 
-  async getStates(limit = 100) {
+  async getStates(limit = 100, scope?: FollowupOrgScope) {
+    const where: any = scope?.tenantDbName ? { tenantDbName: scope.tenantDbName } : {};
     return this.prisma.leadFollowupState.findMany({
+      where,
       orderBy: { updatedAt: 'desc' },
       take: Math.min(limit, 500),
     });

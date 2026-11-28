@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, Request, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import {
   FollowupCampaignConfig,
+  FollowupOrgScope,
   SalesBusterFollowupsService,
 } from './salesbuster-followups.service';
 import { SalesBusterMongoService } from './salesbuster-mongo.service';
@@ -17,25 +18,40 @@ export class SalesBusterFollowupsController {
     private readonly mongoService: SalesBusterMongoService,
   ) {}
 
+  private extractOrgScope(req: any): FollowupOrgScope | undefined {
+    const tenantDbName = req?.user?.tenantDbName;
+    const mongoOrgId = req?.user?.mongoOrgId;
+    const orgName = req?.user?.orgName;
+    if (!tenantDbName && !mongoOrgId) return undefined;
+    return { tenantDbName, mongoOrgId, orgName };
+  }
+
   @Get('reports')
   async getReports(
+    @Request() req: any,
     @Query('stage') stage?: string,
     @Query('limit') limit?: string,
   ) {
+    const scope = this.extractOrgScope(req);
     const data = await this.followupsService.getReports(
       stage,
       limit ? parseInt(limit, 10) : 100,
+      scope,
     );
     return {
       mongoConfigured: this.mongoService.isConfigured(),
+      scopedOrganization: scope?.orgName || null,
+      scopedTenantDb: scope?.tenantDbName || null,
       ...data,
     };
   }
 
   @Get('states')
-  async getStates(@Query('limit') limit?: string) {
+  async getStates(@Request() req: any, @Query('limit') limit?: string) {
+    const scope = this.extractOrgScope(req);
     const states = await this.followupsService.getStates(
       limit ? parseInt(limit, 10) : 100,
+      scope,
     );
     return { states };
   }
@@ -54,7 +70,7 @@ export class SalesBusterFollowupsController {
   }
 
   @Get('preview')
-  async previewDueLeads() {
+  async previewDueLeads(@Request() req: any) {
     if (!this.mongoService.isConfigured()) {
       return {
         success: false,
@@ -63,19 +79,21 @@ export class SalesBusterFollowupsController {
         message: 'SALESBUSTER_MONGO_URI is not configured in backend/.env',
       };
     }
-    const result = await this.followupsService.previewDueLeads();
+    const scope = this.extractOrgScope(req);
+    const result = await this.followupsService.previewDueLeads(new Date(), scope);
     return { success: true, ...result };
   }
 
   @Post('run-now')
-  async runNow(@Body() body?: { selectedKeys?: string[] }) {
+  async runNow(@Request() req: any, @Body() body?: { selectedKeys?: string[] }) {
     if (!this.mongoService.isConfigured()) {
       return {
         success: false,
         message: 'SALESBUSTER_MONGO_URI is not configured in backend/.env',
       };
     }
-    const result = this.followupsService.triggerBackgroundRun(body?.selectedKeys);
+    const scope = this.extractOrgScope(req);
+    const result = this.followupsService.triggerBackgroundRun(body?.selectedKeys, scope);
     return { success: true, ...result };
   }
 
@@ -85,7 +103,8 @@ export class SalesBusterFollowupsController {
   }
 
   @Post('clear')
-  async clearAll() {
-    return this.followupsService.clearFollowupData();
+  async clearAll(@Request() req: any) {
+    const scope = this.extractOrgScope(req);
+    return this.followupsService.clearFollowupData(scope);
   }
 }

@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, HttpCode, HttpStatus, UseGuards, Request } from '@nestjs/common';
+import { Controller, Post, Get, Body, HttpCode, HttpStatus, UseGuards, Request, ForbiddenException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
@@ -7,12 +7,10 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
-  async register(@Body() body: { orgName?: string; email: string; password: string }) {
-    return this.authService.registerOrganization({
-      orgName: body.orgName || 'Petsfolio Marketing',
-      email: body.email,
-      password: body.password,
-    });
+  async register() {
+    throw new ForbiddenException(
+      'Account creation is disabled. Sign in with Default Admin or your SalesBuster Sales Manager account.',
+    );
   }
 
   @Post('login')
@@ -24,7 +22,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Get('me')
   async getProfile(@Request() req: any) {
-    return this.authService.getProfile(req.user.userId);
+    return this.authService.getProfile(req.user.userId, req.user);
   }
 
   @UseGuards(JwtAuthGuard)

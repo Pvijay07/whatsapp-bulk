@@ -71,6 +71,7 @@ export const FollowupReportsView: React.FC = () => {
   const [reports, setReports] = useState<DispatchReport[]>([]);
   const [summary, setSummary] = useState<SummaryItem[]>([]);
   const [mongoConfigured, setMongoConfigured] = useState<boolean>(true);
+  const [scopedOrg, setScopedOrg] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [stageFilter, setStageFilter] = useState<string>('ALL');
   const [loading, setLoading] = useState<boolean>(false);
@@ -112,6 +113,7 @@ export const FollowupReportsView: React.FC = () => {
       setReports(res.data?.reports || []);
       setSummary(res.data?.summary || []);
       setMongoConfigured(Boolean(res.data?.mongoConfigured));
+      setScopedOrg(res.data?.scopedOrganization || null);
       setIsRunning(Boolean(res.data?.isRunning));
     } catch (err: any) {
       console.error('Failed to load SalesBuster follow-up reports', err);
@@ -254,9 +256,14 @@ export const FollowupReportsView: React.FC = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+          <h2 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
             <Bot className="w-6 h-6 text-[#128C7E]" />
             SalesBuster Follow-ups & 15-Day Marketing
+            {scopedOrg && (
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-200">
+                Org: {scopedOrg}
+              </span>
+            )}
             {isRunning && (
               <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 animate-pulse">
                 ● Dispatching in Background
